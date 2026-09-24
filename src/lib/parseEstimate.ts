@@ -20,6 +20,8 @@ export interface ParsedEstimate {
   confidence: 'low' | 'medium' | 'high'
   /** The AI's biggest assumptions, for the user to sanity-check. */
   assumptions: string[]
+  /** Set when the AI says the photo isn't something you eat (a balm, soap…) — what it saw. */
+  notFood?: string
 }
 
 const CONFIDENCE_LEVELS = new Set(['low', 'medium', 'high'])
@@ -65,7 +67,7 @@ function parseItems(raw: unknown): ParsedEstimateItem[] {
 export function parseEstimateResponse(raw: unknown): ParsedEstimate | null {
   if (typeof raw !== 'object' || raw === null) return null
 
-  const { calories, protein_g, carbs_g, fat_g, confidence, items, assumptions } = raw as Record<string, unknown>
+  const { calories, protein_g, carbs_g, fat_g, confidence, items, assumptions, is_food, not_food_reason } = raw as Record<string, unknown>
 
   if (
     !isFiniteNonNegativeNumber(calories) ||
@@ -88,6 +90,9 @@ export function parseEstimateResponse(raw: unknown): ParsedEstimate | null {
     assumptions: Array.isArray(assumptions)
       ? assumptions.filter((a): a is string => typeof a === 'string' && a.trim() !== '').map((a) => a.trim()).slice(0, 3)
       : [],
+    ...(is_food === false
+      ? { notFood: typeof not_food_reason === 'string' && not_food_reason.trim() ? not_food_reason.trim().slice(0, 80) : 'This doesn’t look like food' }
+      : {}),
   }
 }
 

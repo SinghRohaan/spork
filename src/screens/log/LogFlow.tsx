@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import Capture from './Capture'
 import EstimateEdit from './EstimateEdit'
 import PackagedScanner from './PackagedScanner'
+import { SporkLoader } from '../../components/brand/SporkLoader'
 import { useLogDraftStore, type EstimateResult } from '../../store/logDraft'
 import { estimateMeal, type ConfirmedItem } from '../../lib/estimateMeal'
 import { suggestMealType } from '../../lib/mealType'
@@ -14,7 +15,7 @@ import { useTodayStats } from '../../hooks/useTodayStats'
 import { computeNextStreak, getEffectiveStreak } from '../../lib/streak'
 import { hapticSuccess, hapticCelebration, hapticError } from '../../lib/haptics'
 
-type Step = 'capture' | 'scan' | 'loading' | 'edit' | 'celebration'
+type Step = 'capture' | 'scan' | 'loading' | 'edit' | 'not-food' | 'celebration'
 
 interface CelebrationData {
   logId: string
@@ -37,6 +38,7 @@ export default function LogFlow() {
   const [posting, setPosting]   = useState(false)
   const [postError, setPostError] = useState<string | null>(null)
   const [celebData, setCelebData] = useState<CelebrationData | null>(null)
+  const [notFoodReason, setNotFoodReason] = useState('')
   const estimateRequestIdRef    = useRef(0)
   /** 'packaged' when the current photo is a wrapper/label — re-estimates keep reading it as one. */
   const estimateModeRef         = useRef<'meal' | 'packaged'>('meal')
@@ -45,6 +47,14 @@ export default function LogFlow() {
   const applyEstimate = useLogDraftStore((s) => s.applyEstimate)
   const reset        = useLogDraftStore((s) => s.reset)
 
+  /** The AI says the photo isn't edible (balm, soap…): drop the photo so it can't be posted. */
+  function blockNonFood(reason: string) {
+    estimateRequestIdRef.current++
+    reset()
+    setNotFoodReason(reason)
+    setStep('not-food')
+  }
+
   async function handleGetEstimate() {
     if (!photoFile) return
     const requestId = ++estimateRequestIdRef.current
@@ -52,6 +62,7 @@ export default function LogFlow() {
     setStep('loading')
     const result = await estimateMeal(photoFile, useLogDraftStore.getState().description)
     if (estimateRequestIdRef.current !== requestId) return
+    if (result?.parsed.notFood) { blockNonFood(result.parsed.notFood); return }
     applyEstimate(result, suggestMealType(new Date()), user?.privacy_default ?? 'public')
     setStep('edit')
   }
@@ -67,6 +78,7 @@ export default function LogFlow() {
     const result = await estimateMeal(photoFile, useLogDraftStore.getState().description, confirmedItems, estimateModeRef.current)
     if (estimateRequestIdRef.current !== requestId) return false
     if (!result) return false
+    if (result.parsed.notFood) { blockNonFood(result.parsed.notFood); return true }
     useLogDraftStore.getState().applyReestimate(result)
     return true
   }
@@ -91,6 +103,7 @@ export default function LogFlow() {
     setStep('loading')
     const result = await estimateMeal(photo, useLogDraftStore.getState().description, undefined, 'packaged')
     if (estimateRequestIdRef.current !== requestId) return
+    if (result?.parsed.notFood) { blockNonFood(result.parsed.notFood); return }
     applyEstimate(result, suggestMealType(new Date()), user?.privacy_default ?? 'public')
     // A product's real name beats a generated fun name.
     if (result?.parsed.items[0]?.name) useLogDraftStore.getState().setMealName(result.parsed.items[0].name)
@@ -189,6 +202,10 @@ export default function LogFlow() {
     return <EstimateEdit onBack={() => setStep('capture')} onPost={handlePost} posting={posting} postError={postError} onReestimate={photoFile ? handleReestimate : undefined} />
   }
 
+  if (step === 'not-food') {
+    return <NotFoodScreen reason={notFoodReason} onRetry={() => setStep('capture')} />
+  }
+
   if (step === 'celebration' && celebData) {
     return <CelebrationScreen data={celebData} onViewPost={() => navigate(`/home/log/${celebData.logId}`)} onDone={() => navigate('/home/feed')} />
   }
@@ -215,7 +232,7 @@ function LoadingScreen({ onSkip, photoFile }: { onSkip: () => void; photoFile: F
       <div className="text-center" style={{ paddingTop: 100 }}>
         <div className="icon-box relative mx-auto overflow-hidden" style={{ width: 145, height: 145, borderRadius: 48, fontSize: 70 }}>
           {previewUrl && <img src={previewUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30 blur-sm" />}
-          <span className="relative animate-spin-slow">✳</span>
+          <span className="relative"><SporkLoader size={70} label="Analysing your meal" /></span>
         </div>
         <div style={{ height: 28 }} />
         <h2>Analysing your meal</h2>
@@ -223,6 +240,22 @@ function LoadingScreen({ onSkip, photoFile }: { onSkip: () => void; photoFile: F
         <div style={{ height: 28 }} />
         <button type="button" onClick={onSkip} className="btn light">Skip · enter manually</button>
       </div>
+    </div>
+  )
+}
+
+// ── Not-food screen ──────────────────────────────────────────────────────────
+
+function NotFoodScreen({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+  return (
+    <div className="text-center animate-fade-in" style={{ paddingTop: 100 }}>
+      <div className="icon-box mx-auto" style={{ width: 120, height: 120, borderRadius: 40, fontSize: 56 }} aria-hidden="true">🚫</div>
+      <div style={{ height: 24 }} />
+      <h2>That’s not food</h2>
+      <p className="muted">{reason}</p>
+      <p className="small muted" style={{ marginTop: 8 }}>Spork only logs things you eat or drink, so this photo can’t be posted.</p>
+      <div style={{ height: 24 }} />
+      <button type="button" onClick={onRetry} className="btn">Log something else</button>
     </div>
   )
 }

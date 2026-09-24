@@ -17,6 +17,7 @@ type Status =
   | { kind: 'looking-up'; code: string }
   | { kind: 'not-in-database'; code: string; name?: string }
   | { kind: 'not-a-product' }
+  | { kind: 'not-food'; name: string }
   | { kind: 'lookup-failed'; code: string }
 
 /**
@@ -45,7 +46,8 @@ export default function PackagedScanner({ onBack, onProduct, onReadLabel }: Prop
     const result = await lookupBarcode(gtin)
     if (result.kind === 'found') { onProduct(result.estimate); return }
     handledRef.current = false
-    if (result.kind === 'error') setStatus({ kind: 'lookup-failed', code: gtin })
+    if (result.kind === 'not-food') setStatus({ kind: 'not-food', name: result.name })
+    else if (result.kind === 'error') setStatus({ kind: 'lookup-failed', code: gtin })
     else setStatus({ kind: 'not-in-database', code: gtin, name: result.kind === 'no-nutrition' ? result.name : undefined })
   }
 
@@ -103,6 +105,7 @@ export default function PackagedScanner({ onBack, onProduct, onReadLabel }: Prop
     if (gtin && gtin !== (status.kind === 'not-in-database' ? status.code : '')) {
       const result = await lookupBarcode(gtin)
       if (result.kind === 'found') { onProduct(result.estimate); return }
+      if (result.kind === 'not-food') { setReadingPhoto(false); setStatus({ kind: 'not-food', name: result.name }); return }
       onReadLabel(file, result.kind === 'no-nutrition' ? result.name : productHint)
       return
     }
@@ -117,6 +120,7 @@ export default function PackagedScanner({ onBack, onProduct, onReadLabel }: Prop
         ? `${status.name} has no nutrition info in the database yet. Snap the nutrition table and we’ll read it.`
         : 'This product isn’t in the food database yet. Snap the nutrition table or the front of the pack.'
       case 'not-a-product':   return 'That code isn’t a product barcode. Try the barcode on the back, or snap the label.'
+      case 'not-food':        return `${status.name} isn’t food. Spork only logs things you eat or drink.`
       case 'lookup-failed':   return 'Couldn’t reach the food database. Check your connection, or snap the label instead.'
     }
   })()
@@ -146,7 +150,7 @@ export default function PackagedScanner({ onBack, onProduct, onReadLabel }: Prop
         </div>
       )}
 
-      {message && <p className={`small ${status.kind === 'scanning' ? 'muted' : ''} text-center`} style={{ margin: '14px 0' }}>{message}</p>}
+      {message && <p className={`small ${status.kind === 'scanning' ? 'muted' : status.kind === 'not-food' ? 'text-error' : ''} text-center`} style={{ margin: '14px 0' }}>{message}</p>}
 
       <button type="button" onClick={() => photoRef.current?.click()} disabled={readingPhoto}
         className={needsPhoto ? 'btn' : 'btn light'}>

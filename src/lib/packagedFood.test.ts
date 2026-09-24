@@ -76,6 +76,12 @@ describe('lookupBarcode', () => {
     const r = await lookupBarcode('123', ok({ status: 1, product: { brands: 'Brand', product_name: 'Bar' } }))
     expect(r).toEqual({ kind: 'no-nutrition', name: 'Brand Bar' })
   })
+  it('non-food products (beauty, pet food, household) → not-food', async () => {
+    expect(await lookupBarcode('123', ok({ status: 1, product: { brands: 'Vaseline', product_name: 'Lip Care', product_type: 'beauty', nutriments: {} } })))
+      .toEqual({ kind: 'not-food', name: 'Vaseline Lip Care' })
+    expect((await lookupBarcode('123', ok({ status: 1, product: { product_name: 'Hair Oil', categories_tags: ['en:non-food-products'] } }))).kind).toBe('not-food')
+    expect((await lookupBarcode('123', ok({ status: 1, product: { product_name: 'Bar', product_type: 'food', nutriments: { 'energy-kcal_serving': 200 } } }))).kind).toBe('found')
+  })
   it('unknown product → not-found; network failure → error', async () => {
     expect((await lookupBarcode('123', ok({ status: 0 }))).kind).toBe('not-found')
     expect((await lookupBarcode('123', vi.fn(async () => { throw new Error('offline') }))).kind).toBe('error')

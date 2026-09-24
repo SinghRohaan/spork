@@ -3,7 +3,7 @@
 // Plain-language first draft — review the wording before relying on it legally.
 import { TopBar } from '../../components/TopBar'
 
-const UPDATED = '20 September 2026'
+const UPDATED = '24 September 2026'
 
 function LegalPage({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -27,7 +27,10 @@ export function Privacy() {
       <h3>What we don’t do</h3>
       <p>We don’t sell your data, and we don’t show ads. We only share data with the services above as needed to run Spork.</p>
       <h3>Your choices</h3>
-      <p>You can set posts to private, remove friends, and delete individual meals at any time. To delete your whole account and its data, email us at <a href="mailto:sporkapp.ai@gmail.com">sporkapp.ai@gmail.com</a> from your registered address and we’ll remove it within 30 days.</p>
+      <p>You can set posts to private, remove friends, and delete individual meals at any time.</p>
+      <h3 id="delete-account">Deleting your account</h3>
+      <p>In the app, go to <b>Profile → Settings → Delete account</b>. This immediately and permanently deletes your profile, meals, photos, streaks, friends, likes and comments.</p>
+      <p>Can’t sign in? Email <a href="mailto:sporkapp.ai@gmail.com">sporkapp.ai@gmail.com</a> from your registered address with the subject “Delete my account” and we’ll delete it and all its data within 30 days.</p>
       <h3>Contact</h3>
       <p><a href="mailto:sporkapp.ai@gmail.com">sporkapp.ai@gmail.com</a></p>
     </LegalPage>

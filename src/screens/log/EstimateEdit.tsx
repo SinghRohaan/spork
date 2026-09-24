@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLogDraftStore, type MealType, type Satiety } from '../../store/logDraft'
 import { useTodayStats } from '../../hooks/useTodayStats'
 import { formatItemQuantity, type ParsedEstimateItem } from '../../lib/parseEstimate'
@@ -61,6 +61,8 @@ export default function EstimateEdit({ onBack, onPost, posting, postError, onRee
   const setVisibility  = useLogDraftStore((s) => s.setVisibility)
   const setSatiety     = useLogDraftStore((s) => s.setSatiety)
   const setPortionMultiplier = useLogDraftStore((s) => s.setPortionMultiplier)
+  const setPhoto       = useLogDraftStore((s) => s.setPhoto)
+  const photoInputRef  = useRef<HTMLInputElement>(null)
 
   const { data: stats } = useTodayStats()
 
@@ -91,6 +93,24 @@ export default function EstimateEdit({ onBack, onPost, posting, postError, onRee
 
       {/* Photo preview */}
       {previewUrl && <img src={previewUrl} alt="" className="photo natural" style={{ maxHeight: 260 }} />}
+
+      {/* Barcode logs start without a photo — let the user add one of the pack */}
+      {fromBarcode && (
+        <>
+          {previewUrl ? (
+            <button type="button" onClick={() => photoInputRef.current?.click()} className="small font-semibold" style={{ margin: '8px 0 4px' }}>
+              Change photo
+            </button>
+          ) : (
+            <button type="button" onClick={() => photoInputRef.current?.click()} className="card w-full text-left">
+              <b className="block font-semibold">📷 Add a photo · optional</b>
+              <small className="muted">Snap the bar, pack or drink for your post</small>
+            </button>
+          )}
+          <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="sr-only"
+            onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) setPhoto(file) }} />
+        </>
+      )}
 
       {/* Estimate summary */}
       <div className="card tint">

@@ -35,13 +35,17 @@ export interface OffProduct {
   serving_size?: string
   serving_quantity?: number | string
   nutriments?: OffNutriments
+  /** 'food' | 'beauty' | 'petfood' | 'product' — Open Food Facts shares one barcode space across its sister databases. */
+  product_type?: string
+  categories_tags?: string[]
 }
 
-const OFF_FIELDS = 'code,product_name,product_name_en,brands,quantity,serving_size,serving_quantity,nutriments'
+const OFF_FIELDS = 'code,product_name,product_name_en,brands,quantity,serving_size,serving_quantity,nutriments,product_type,categories_tags'
 
 export type LookupResult =
   | { kind: 'found'; estimate: EstimateResult; name: string }
   | { kind: 'no-nutrition'; name: string }   // product known, nutrition missing → read the label
+  | { kind: 'not-food'; name: string }       // balm, shampoo, pet food… → refuse to log
   | { kind: 'not-found' }
   | { kind: 'error' }
 
@@ -53,11 +57,18 @@ export async function lookupBarcode(gtin: string, fetchImpl: typeof fetch = fetc
     const body = (await res.json()) as { status?: number; product?: OffProduct }
     if (body.status !== 1 || !body.product) return { kind: 'not-found' }
     const name = productName(body.product)
+    if (isNonFood(body.product)) return { kind: 'not-food', name }
     const estimate = productToEstimate(body.product, gtin)
     return estimate ? { kind: 'found', estimate, name } : { kind: 'no-nutrition', name }
   } catch {
     return { kind: 'error' }
   }
+}
+
+/** Cosmetics, pet food and household products that live in the same barcode database. */
+export function isNonFood(p: OffProduct): boolean {
+  if (p.product_type && p.product_type !== 'food') return true
+  return (p.categories_tags ?? []).includes('en:non-food-products')
 }
 
 export function productName(p: OffProduct): string {

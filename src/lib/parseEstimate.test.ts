@@ -43,6 +43,13 @@ describe('parseEstimateResponse', () => {
     expect(result.items[0]).toMatchObject({ quantity: null, grams: null, confidence: null })
   })
 
+  it('flags a non-food photo with the AI\'s reason', () => {
+    const result = parseEstimateResponse({ ...valid, items: [], is_food: false, not_food_reason: ' Looks like a lip balm ' })!
+    expect(result.notFood).toBe('Looks like a lip balm')
+    expect(parseEstimateResponse({ ...valid, is_food: false })!.notFood).toBe('This doesn’t look like food')
+    expect(parseEstimateResponse({ ...valid, is_food: true })!.notFood).toBeUndefined()
+  })
+
   it('returns empty items array when items field is absent', () => {
     const { items: _items, ...noItems } = valid
     const result = parseEstimateResponse(noItems)

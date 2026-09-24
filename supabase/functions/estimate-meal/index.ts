@@ -17,6 +17,16 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Guardrail shared by both prompts: non-edible products (balms, ointments,
+// hair oil, soap…) are flagged so the app can refuse to log them.
+const FOOD_CHECK = `FIRST — IS THIS SOMETHING PEOPLE EAT OR DRINK?
+- Food, drinks and dietary supplements (protein powder, vitamins, ORS) count as food — so do cooking oils, ghee, spices and sauces.
+- Set "is_food" to false ONLY when the photo clearly shows something not meant to be eaten: cosmetics or skincare (cream, lotion, lip balm, balm), medicines or ointments, hair oil, massage or essential oil, soap, detergent or cleaning products, pet food, or no food at all (a person, a room, a screenshot).
+- When "is_food" is false: return "items": [], every number 0, "confidence": "low", and "not_food_reason" saying what it is in under 60 characters (e.g. "Looks like a lip balm").
+- When in doubt, treat it as food and set "is_food" to true.
+
+`
+
 const PROMPT = `You are a registered-dietitian-level nutrition estimator specialising in Indian and South Asian home food, with broad knowledge of global cuisine. You are looking at a photo of one meal.
 
 Work in two passes.
@@ -50,6 +60,7 @@ ASSUMPTIONS
 
 Return ONLY JSON of this shape:
 {
+  "is_food": boolean, "not_food_reason": string,
   "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high" }],
   "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number,
   "confidence": "low"|"medium"|"high",
@@ -82,6 +93,7 @@ In "assumptions", say where the numbers came from in under 90 characters, e.g. "
 
 Return ONLY JSON of this shape:
 {
+  "is_food": boolean, "not_food_reason": string,
   "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high" }],
   "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number,
   "confidence": "low"|"medium"|"high",
@@ -94,6 +106,8 @@ Top-level calories/protein_g/carbs_g/fat_g equal the single item's values.`
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
+    is_food: { type: 'BOOLEAN' },
+    not_food_reason: { type: 'STRING' },
     items: {
       type: 'ARRAY',
       items: {
@@ -118,7 +132,7 @@ const RESPONSE_SCHEMA = {
     confidence: { type: 'STRING', enum: ['low', 'medium', 'high'] },
     assumptions: { type: 'ARRAY', items: { type: 'STRING' } },
   },
-  required: ['items', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'confidence'],
+  required: ['is_food', 'items', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'confidence'],
 }
 
 interface ConfirmedItem {
@@ -192,7 +206,7 @@ async function estimateMeal(
 
   const parts = [
     { inline_data: { mime_type: 'image/jpeg', data: photoBase64 } },
-    { text: [mode === 'packaged' ? PACKAGED_PROMPT : PROMPT, buildUserContext(description, confirmedItems)].filter(Boolean).join('\n\n') },
+    { text: [FOOD_CHECK + (mode === 'packaged' ? PACKAGED_PROMPT : PROMPT), buildUserContext(description, confirmedItems)].filter(Boolean).join('\n\n') },
   ]
 
   const requestBody = JSON.stringify({

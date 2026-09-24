@@ -10,6 +10,7 @@ import { Skeleton } from '../../components/Skeleton'
 import { useToast } from '../../components/Toast'
 import { TopBar } from '../../components/TopBar'
 import { isValidUsernameFormat } from '../../lib/username'
+import { deleteAccount } from '../../lib/deleteAccount'
 
 export default function SettingsScreen() {
   const queryClient   = useQueryClient()
@@ -24,6 +25,10 @@ export default function SettingsScreen() {
   const [usernameVal,     setUsernameVal]     = useState('')
   const [usernameError,   setUsernameError]   = useState<string | null>(null)
   const [usernameSaving,  setUsernameSaving]  = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteText,       setDeleteText]       = useState('')
+  const [deleting,         setDeleting]         = useState(false)
+  const [deleteError,      setDeleteError]      = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -76,6 +81,24 @@ export default function SettingsScreen() {
   async function handleSignOut() {
     if (!window.confirm('Sign out of Spork?')) return
     await supabase.auth.signOut()
+    queryClient.clear()
+    useLogDraftStore.getState().reset()
+    useOnboardingStore.getState().reset()
+  }
+
+  async function handleDeleteAccount() {
+    if (!user) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteAccount(user.id)
+    } catch {
+      setDeleting(false)
+      setDeleteError('Could not delete your account — check your connection and try again.')
+      return
+    }
+    // The account no longer exists server-side — just clear this device.
+    await supabase.auth.signOut({ scope: 'local' })
     queryClient.clear()
     useLogDraftStore.getState().reset()
     useOnboardingStore.getState().reset()
@@ -229,6 +252,31 @@ export default function SettingsScreen() {
           )}
           <div className="divider" />
           <button type="button" onClick={handleSignOut} className="font-semibold">Sign out →</button>
+          <div className="divider" />
+          {confirmingDelete ? (
+            <div>
+              <b className="block font-semibold text-error">Delete your account?</b>
+              <p className="small muted" style={{ marginTop: 4 }}>
+                This permanently deletes your profile, meals, photos, streaks, friends, likes and comments. It can’t be undone.
+              </p>
+              <div className="field" style={{ margin: '12px 0 0' }}>
+                <label htmlFor="delete-confirm">Type DELETE to confirm</label>
+                <input id="delete-confirm" value={deleteText} onChange={(e) => setDeleteText(e.target.value)}
+                  autoCapitalize="characters" autoCorrect="off" autoComplete="off" />
+              </div>
+              {deleteError && <p className="error-text" style={{ marginTop: 8 }}>{deleteError}</p>}
+              <div className="flex items-center justify-end gap-4" style={{ marginTop: 10 }}>
+                <button type="button" className="muted" disabled={deleting}
+                  onClick={() => { setConfirmingDelete(false); setDeleteText(''); setDeleteError(null) }}>Cancel</button>
+                <button type="button" className="font-semibold text-error" onClick={handleDeleteAccount}
+                  disabled={deleting || deleteText.trim().toUpperCase() !== 'DELETE'}>
+                  {deleting ? 'Deleting…' : 'Delete forever'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setConfirmingDelete(true)} className="small text-error">Delete account</button>
+          )}
         </div>
       </div>
     </div>
