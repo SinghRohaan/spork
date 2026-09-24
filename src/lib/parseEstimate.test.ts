@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseEstimateResponse } from './parseEstimate'
+import { formatItemQuantity, parseEstimateResponse } from './parseEstimate'
 
 describe('parseEstimateResponse', () => {
   const validItem = { name: 'Rice', calories: 200, protein_g: 4, carbs_g: 45, fat_g: 0.5 }
@@ -12,16 +12,35 @@ describe('parseEstimateResponse', () => {
     confidence: 'medium',
   }
 
-  it('parses and rounds a valid response including items', () => {
+  it('parses and rounds a valid response including items (old format → new fields empty)', () => {
     const result = parseEstimateResponse(valid)
     expect(result).toEqual({
-      items: [{ name: 'Rice', calories: 200, protein_g: 4, carbs_g: 45, fat_g: 1 }],
+      items: [{ name: 'Rice', quantity: null, grams: null, calories: 200, protein_g: 4, carbs_g: 45, fat_g: 1, confidence: null }],
       calories: 542,
       protein_g: 30,
       carbs_g: 61,
       fat_g: 12,
       confidence: 'medium',
+      assumptions: [],
     })
+  })
+
+  it('parses quantity, grams, per-item confidence and assumptions from the v2 prompt', () => {
+    const result = parseEstimateResponse({
+      ...valid,
+      items: [{ ...validItem, name: ' White rice ', quantity: ' 1 cup cooked ', grams: 152.4, confidence: 'high' }],
+      assumptions: ['Assumed 1 tsp oil', '', 42, 'Curry could be prawn', 'third', 'fourth'],
+    })!
+    expect(result.items[0]).toMatchObject({ name: 'White rice', quantity: '1 cup cooked', grams: 152, confidence: 'high' })
+    expect(result.assumptions).toEqual(['Assumed 1 tsp oil', 'Curry could be prawn', 'third'])
+  })
+
+  it('ignores junk quantity / grams / confidence without dropping the item', () => {
+    const result = parseEstimateResponse({
+      ...valid,
+      items: [{ ...validItem, quantity: '   ', grams: -5, confidence: 'certain' }],
+    })!
+    expect(result.items[0]).toMatchObject({ quantity: null, grams: null, confidence: null })
   })
 
   it('returns empty items array when items field is absent', () => {
@@ -70,5 +89,19 @@ describe('parseEstimateResponse', () => {
 
   it('returns null for a non-object input', () => {
     expect(parseEstimateResponse('not an object')).toBeNull()
+  })
+})
+
+describe('formatItemQuantity', () => {
+  it('joins the household measure and grams', () => {
+    expect(formatItemQuantity({ quantity: '1 cup cooked', grams: 150 })).toBe('1 cup cooked · ~150 g')
+  })
+  it('does not repeat grams already in the text', () => {
+    expect(formatItemQuantity({ quantity: '150 g', grams: 150 })).toBe('150 g')
+  })
+  it('falls back to whichever part exists', () => {
+    expect(formatItemQuantity({ quantity: null, grams: 90 })).toBe('~90 g')
+    expect(formatItemQuantity({ quantity: '2 eggs', grams: null })).toBe('2 eggs')
+    expect(formatItemQuantity({ quantity: null, grams: null })).toBeNull()
   })
 })

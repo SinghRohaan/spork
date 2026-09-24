@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLogDraftStore, type MealType, type Satiety } from '../../store/logDraft'
 import { useTodayStats } from '../../hooks/useTodayStats'
+import { formatItemQuantity, type ParsedEstimateItem } from '../../lib/parseEstimate'
+import type { ConfirmedItem } from '../../lib/estimateMeal'
 
 const MEAL_TYPE_OPTIONS: { value: MealType; label: string }[] = [
   { value: 'breakfast', label: 'Breakfast' },
@@ -34,9 +36,11 @@ interface EstimateEditProps {
   onPost: () => void
   posting: boolean
   postError: string | null
+  /** Present when there's a photo to re-analyse. Resolves false if the AI call failed. */
+  onReestimate?: (items: ConfirmedItem[]) => Promise<boolean>
 }
 
-export default function EstimateEdit({ onBack, onPost, posting, postError }: EstimateEditProps) {
+export default function EstimateEdit({ onBack, onPost, posting, postError, onReestimate }: EstimateEditProps) {
   const photoFile   = useLogDraftStore((s) => s.photoFile)
   const mealName    = useLogDraftStore((s) => s.mealName)
   const caption     = useLogDraftStore((s) => s.caption)
@@ -60,7 +64,7 @@ export default function EstimateEdit({ onBack, onPost, posting, postError }: Est
 
   const { data: stats } = useTodayStats()
 
-  const [showItemBreakdown, setShowItemBreakdown] = useState(false)
+  const [showItemBreakdown, setShowItemBreakdown] = useState(true)
 
   const previewUrl = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile])
   useEffect(() => {
@@ -72,7 +76,9 @@ export default function EstimateEdit({ onBack, onPost, posting, postError }: Est
   const kcalAfterThisMeal = (stats?.caloriesLogged ?? 0) + (calories ?? 0)
   const goal = stats?.calorieGoal ?? 0
   const willExceedGoal = goal > 0 && kcalAfterThisMeal > goal
-  const items = estimate?.parsed.items ?? []
+  const items = useLogDraftStore((s) => s.items)
+  const assumptions = estimate?.parsed.assumptions ?? []
+  const fromBarcode = (estimate?.raw as { source?: string } | undefined)?.source === 'barcode'
 
   return (
     <div>
@@ -110,25 +116,23 @@ export default function EstimateEdit({ onBack, onPost, posting, postError }: Est
         )}
       </div>
 
-      {/* AI item breakdown — collapsible */}
-      {items.length > 0 && (
+      {/* AI item breakdown — tap an item to correct it */}
+      {(items.length > 0 || (estimate && onReestimate)) && (
         <div className="card" style={{ marginTop: 0 }}>
           <button type="button" onClick={() => setShowItemBreakdown((v) => !v)} className="flex w-full items-center justify-between gap-3 text-left">
             <span className="min-w-0">
-              <b className="block font-semibold">AI detected {items.length} item{items.length > 1 ? 's' : ''}</b>
-              <small className="muted block truncate">{items.map((i) => i.name).join(', ')}</small>
+              <b className="block font-semibold">
+                {fromBarcode ? 'From the barcode' : `AI detected ${items.length} item${items.length === 1 ? '' : 's'}`}
+              </b>
+              <small className="muted block truncate">
+                {items.length ? 'Tap an item to fix the dish or amount' : 'Add what’s on the plate'}
+              </small>
             </span>
             <span className="muted">{showItemBreakdown ? '▴' : '▾'}</span>
           </button>
-          {showItemBreakdown && items.map((item, idx) => (
-            <div key={idx} className="meal-row items-center justify-between" style={{ marginBottom: 0 }}>
-              <span>
-                <b className="block text-[13px] font-semibold">{item.name}</b>
-                <small className="muted">P {item.protein_g}g · C {item.carbs_g}g · F {item.fat_g}g</small>
-              </span>
-              <b className="font-semibold">{item.calories} kcal</b>
-            </div>
-          ))}
+          {showItemBreakdown && (
+            <ItemBreakdown items={items} assumptions={assumptions} onReestimate={onReestimate} fromBarcode={fromBarcode} />
+          )}
         </div>
       )}
 
@@ -227,5 +231,206 @@ export default function EstimateEdit({ onBack, onPost, posting, postError }: Est
         {posting ? 'Posting…' : postError ? 'Retry' : 'Post meal'}
       </button>
     </div>
+  )
+}
+
+// ── Item breakdown with inline editing ──────────────────────────────────────
+
+type EditTarget = number | 'new' | null
+
+interface ItemForm {
+  name: string
+  quantity: string
+  grams: string
+  calories: string
+  protein_g: string
+  carbs_g: string
+  fat_g: string
+}
+
+const EMPTY_FORM: ItemForm = { name: '', quantity: '', grams: '', calories: '', protein_g: '', carbs_g: '', fat_g: '' }
+
+function toForm(item: ParsedEstimateItem): ItemForm {
+  return {
+    name: item.name,
+    quantity: item.quantity ?? '',
+    grams: item.grams ? String(item.grams) : '',
+    calories: String(item.calories),
+    protein_g: String(item.protein_g),
+    carbs_g: String(item.carbs_g),
+    fat_g: String(item.fat_g),
+  }
+}
+
+const num = (v: string) => (v.trim() === '' ? 0 : Math.max(0, Math.round(Number(v) || 0)))
+
+function ItemBreakdown({
+  items,
+  assumptions,
+  onReestimate,
+  fromBarcode = false,
+}: {
+  items: (ParsedEstimateItem & { edited?: boolean })[]
+  assumptions: string[]
+  onReestimate?: (items: ConfirmedItem[]) => Promise<boolean>
+  fromBarcode?: boolean
+}) {
+  const updateItem = useLogDraftStore((s) => s.updateItem)
+  const removeItem = useLogDraftStore((s) => s.removeItem)
+  const addItem    = useLogDraftStore((s) => s.addItem)
+
+  const [editing, setEditing]   = useState<EditTarget>(null)
+  const [form, setForm]         = useState<ItemForm>(EMPTY_FORM)
+  const [status, setStatus]     = useState<'idle' | 'working' | 'failed'>('idle')
+
+  const hasEdits = items.some((i) => i.edited)
+
+  function startEdit(target: EditTarget) {
+    setEditing(target)
+    setForm(typeof target === 'number' ? toForm(items[target]) : EMPTY_FORM)
+  }
+
+  function save() {
+    const name = form.name.trim()
+    if (!name) return
+    const patch = {
+      name,
+      quantity: form.quantity.trim() || null,
+      grams: num(form.grams) || null,
+      calories: num(form.calories),
+      protein_g: num(form.protein_g),
+      carbs_g: num(form.carbs_g),
+      fat_g: num(form.fat_g),
+    }
+    if (editing === 'new') addItem({ ...patch, confidence: null })
+    else if (typeof editing === 'number') updateItem(editing, patch)
+    setEditing(null)
+    setStatus('idle')
+  }
+
+  async function recalculate() {
+    if (!onReestimate) return
+    setStatus('working')
+    const ok = await onReestimate(items.map((i) => ({ name: i.name, quantity: i.quantity ?? undefined })))
+    setStatus(ok ? 'idle' : 'failed')
+  }
+
+  /**
+   * Changing the grams rescales the macros proportionally from the item as
+   * it was when editing began — so "label says per 100 g, I had 30 g" is
+   * one edit, no maths.
+   */
+  function setGrams(value: string) {
+    const base = typeof editing === 'number' ? items[editing] : null
+    const g = num(value)
+    if (!base?.grams || !g) { setForm((f) => ({ ...f, grams: value })); return }
+    const k = g / base.grams
+    setForm((f) => ({
+      ...f,
+      grams: value,
+      quantity: `${g} g`,
+      calories: String(Math.round(base.calories * k)),
+      protein_g: String(Math.round(base.protein_g * k)),
+      carbs_g: String(Math.round(base.carbs_g * k)),
+      fat_g: String(Math.round(base.fat_g * k)),
+    }))
+  }
+
+  const field = (key: keyof ItemForm, label: string, numeric = false) => (
+    <div className="field" style={{ margin: 0 }}>
+      <label htmlFor={`item-${key}`}>{label}</label>
+      <input
+        id={`item-${key}`}
+        value={form[key]}
+        placeholder={key === 'quantity' ? 'e.g. 1 katori' : key === 'name' ? 'e.g. Prawn curry' : undefined}
+        onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+        {...(numeric ? { type: 'number', min: 0, inputMode: 'numeric' as const } : {})}
+      />
+    </div>
+  )
+
+  const editor = (
+    <div className="item-editor">
+      {field('name', 'Dish')}
+      <div className="inline-fields" style={{ marginTop: 10 }}>
+        {field('quantity', 'Amount')}
+        <div className="field" style={{ margin: 0 }}>
+          <label htmlFor="item-grams">Grams{typeof editing === 'number' && items[editing]?.grams ? ' · rescales' : ''}</label>
+          <input id="item-grams" type="number" min={0} inputMode="numeric" value={form.grams} onChange={(e) => setGrams(e.target.value)} />
+        </div>
+      </div>
+      <div className="inline-fields" style={{ marginTop: 10 }}>
+        {field('calories', 'kcal', true)}
+        {field('protein_g', 'Protein · g', true)}
+        {field('carbs_g', 'Carbs · g', true)}
+        {field('fat_g', 'Fat · g', true)}
+      </div>
+      {onReestimate && (
+        <p className="tiny muted" style={{ marginTop: 8 }}>
+          Changed the dish or amount? Save, then tap <b>Recalculate with AI</b> for accurate numbers.
+        </p>
+      )}
+      <div className="flex items-center gap-4" style={{ marginTop: 10 }}>
+        <button type="button" onClick={save} disabled={!form.name.trim()} className="pill sel">Save</button>
+        <button type="button" onClick={() => setEditing(null)} className="muted small">Cancel</button>
+        {typeof editing === 'number' && (
+          <button type="button" onClick={() => { removeItem(editing); setEditing(null) }} className="small text-error ml-auto">
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <>
+      {items.map((item, idx) =>
+        editing === idx ? (
+          <div key={idx}>{editor}</div>
+        ) : (
+          <button key={idx} type="button" onClick={() => startEdit(idx)} className="meal-row item-row w-full text-left" style={{ marginBottom: 0 }}>
+            <span className="min-w-0 flex-1">
+              <b className="block text-[13px] font-semibold">
+                {item.name}
+                {item.confidence === 'low' && !item.edited && <span className="item-flag" title="The AI isn’t sure — check this one">?</span>}
+              </b>
+              {formatItemQuantity(item) && <small className="block">{formatItemQuantity(item)}</small>}
+              <small className="muted">P {item.protein_g}g · C {item.carbs_g}g · F {item.fat_g}g</small>
+            </span>
+            <span className="flex flex-none items-center gap-2">
+              <b className="font-semibold">{item.calories} kcal</b>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="muted">
+                <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+              </svg>
+            </span>
+          </button>
+        ),
+      )}
+
+      {editing === 'new' ? editor : (
+        <button type="button" onClick={() => startEdit('new')} className="small font-semibold" style={{ marginTop: 12 }}>
+          {fromBarcode ? '+ Add something else you had' : '+ Add an item the AI missed'}
+        </button>
+      )}
+
+      {assumptions.length > 0 && !hasEdits && (
+        <ul className="tiny muted" style={{ marginTop: 12, paddingLeft: 16, listStyle: 'disc' }}>
+          {assumptions.map((a) => <li key={a}>{a}</li>)}
+        </ul>
+      )}
+
+      {hasEdits && onReestimate && editing === null && (
+        <div style={{ marginTop: 14 }}>
+          <button type="button" onClick={recalculate} disabled={status === 'working'} className="btn" style={{ margin: 0, background: 'var(--color-soft)', color: 'var(--color-ink)' }}>
+            {status === 'working' ? 'Recalculating…' : '✦ Recalculate with AI'}
+          </button>
+          <p className={`tiny ${status === 'failed' ? 'text-error' : 'muted'}`} style={{ marginTop: 6 }}>
+            {status === 'failed'
+              ? 'Couldn’t reach the AI — your edits are kept, try again.'
+              : 'Re-reads the photo using your corrections as fact.'}
+          </p>
+        </div>
+      )}
+    </>
   )
 }

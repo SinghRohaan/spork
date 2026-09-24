@@ -1,9 +1,14 @@
 export interface ParsedEstimateItem {
   name: string
+  /** Human-readable amount the AI assumed, e.g. "1 cup cooked" (null from older responses). */
+  quantity: string | null
+  /** Estimated cooked / as-served weight in grams (null from older responses). */
+  grams: number | null
   calories: number
   protein_g: number
   carbs_g: number
   fat_g: number
+  confidence: 'low' | 'medium' | 'high' | null
 }
 
 export interface ParsedEstimate {
@@ -13,6 +18,8 @@ export interface ParsedEstimate {
   carbs_g: number
   fat_g: number
   confidence: 'low' | 'medium' | 'high'
+  /** The AI's biggest assumptions, for the user to sanity-check. */
+  assumptions: string[]
 }
 
 const CONFIDENCE_LEVELS = new Set(['low', 'medium', 'high'])
@@ -26,7 +33,7 @@ function parseItems(raw: unknown): ParsedEstimateItem[] {
   const items: ParsedEstimateItem[] = []
   for (const item of raw) {
     if (typeof item !== 'object' || item === null) continue
-    const { name, calories, protein_g, carbs_g, fat_g } = item as Record<string, unknown>
+    const { name, quantity, grams, calories, protein_g, carbs_g, fat_g, confidence } = item as Record<string, unknown>
     if (
       typeof name !== 'string' ||
       !isFiniteNonNegativeNumber(calories) ||
@@ -35,11 +42,16 @@ function parseItems(raw: unknown): ParsedEstimateItem[] {
       !isFiniteNonNegativeNumber(fat_g)
     ) continue
     items.push({
-      name,
+      name: name.trim(),
+      quantity: typeof quantity === 'string' && quantity.trim() ? quantity.trim() : null,
+      grams: isFiniteNonNegativeNumber(grams) && grams > 0 ? Math.round(grams) : null,
       calories: Math.round(calories),
       protein_g: Math.round(protein_g),
       carbs_g: Math.round(carbs_g),
       fat_g: Math.round(fat_g),
+      confidence: typeof confidence === 'string' && CONFIDENCE_LEVELS.has(confidence)
+        ? (confidence as 'low' | 'medium' | 'high')
+        : null,
     })
   }
   return items
@@ -53,7 +65,7 @@ function parseItems(raw: unknown): ParsedEstimateItem[] {
 export function parseEstimateResponse(raw: unknown): ParsedEstimate | null {
   if (typeof raw !== 'object' || raw === null) return null
 
-  const { calories, protein_g, carbs_g, fat_g, confidence, items } = raw as Record<string, unknown>
+  const { calories, protein_g, carbs_g, fat_g, confidence, items, assumptions } = raw as Record<string, unknown>
 
   if (
     !isFiniteNonNegativeNumber(calories) ||
@@ -73,5 +85,16 @@ export function parseEstimateResponse(raw: unknown): ParsedEstimate | null {
     carbs_g: Math.round(carbs_g),
     fat_g: Math.round(fat_g),
     confidence: confidence as 'low' | 'medium' | 'high',
+    assumptions: Array.isArray(assumptions)
+      ? assumptions.filter((a): a is string => typeof a === 'string' && a.trim() !== '').map((a) => a.trim()).slice(0, 3)
+      : [],
   }
+}
+
+/** "1 cup cooked · ~150 g" — what the review screen shows under an item's name. */
+export function formatItemQuantity(item: Pick<ParsedEstimateItem, 'quantity' | 'grams'>): string | null {
+  const q = item.quantity?.trim() || null
+  const g = item.grams ? `~${item.grams} g` : null
+  if (q && g && !q.includes(`${item.grams}`)) return `${q} · ${g}`
+  return q ?? g
 }

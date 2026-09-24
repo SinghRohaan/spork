@@ -9,9 +9,10 @@ interface CaptureProps {
   onSkipPhoto: () => void
   onRepeat?: () => void
   recentMealName?: string
+  onScanPackaged?: () => void
 }
 
-export default function Capture({ onGetEstimate, onSkipPhoto, onRepeat, recentMealName }: CaptureProps) {
+export default function Capture({ onGetEstimate, onSkipPhoto, onRepeat, recentMealName, onScanPackaged }: CaptureProps) {
   const { photoFile, description, setPhoto, setDescription } = useLogDraftStore()
   const { data: stats, isError, refetch } = useTodayStats()
 
@@ -60,6 +61,22 @@ export default function Capture({ onGetEstimate, onSkipPhoto, onRepeat, recentMe
           </div>
           <p className="small muted">or enter manually below</p>
         </div>
+      )}
+
+      {/* ── Packaged food: barcode or label ─────────────────────── */}
+      {onScanPackaged && (
+        <button type="button" onClick={onScanPackaged} className="card block w-full text-left" style={{ marginTop: 10 }}>
+          <span className="flex items-center gap-3">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+              <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+              <path d="M7 8v8M10 8v8M13 8v8M17 8v8" />
+            </svg>
+            <span>
+              <b className="block font-semibold">Packaged food</b>
+              <span className="small muted">Scan the barcode, or snap the label · exact numbers</span>
+            </span>
+          </span>
+        </button>
       )}
 
       {/* Hidden inputs — camera forces live capture, gallery opens picker */}

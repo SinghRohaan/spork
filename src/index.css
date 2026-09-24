@@ -295,6 +295,25 @@
   .meal-row + .meal-row { border-top: 1px solid var(--color-line); padding-top: 13px; }
 
   /* Comments — roomier rows and real tap targets on the actions */
+  /* Packaged-food scanner */
+  .scanner { position: relative; aspect-ratio: 3 / 4; max-height: 56vh; width: 100%; border-radius: 27px; overflow: hidden; background: #000; }
+  .scanner video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scanner-frame {
+    position: absolute; left: 12%; right: 12%; top: 34%; height: 26%;
+    border: 2px solid rgba(255,255,255,.9); border-radius: 18px; box-shadow: 0 0 0 999px rgba(0,0,0,.35);
+  }
+  .scanner-note { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 13px; }
+
+  /* Review screen — editable AI items */
+  .item-row { border-radius: 0; }
+  .item-row small { font-size: 11px; line-height: 1.4; }
+  .item-flag {
+    display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 6px;
+    border-radius: 999px; background: var(--color-soft); font-size: 10px; vertical-align: 1px;
+  }
+  .item-editor { margin: 13px 0 4px; padding: 12px; border-radius: 19px; background: var(--color-soft); }
+  .item-editor .field input { background: var(--color-paper); }
+
   .comment-row { align-items: flex-start; gap: 10px; margin: 6px 0; padding: 9px 0; }
   .comment-row + .comment-row { padding-top: 12px; }
   .comment-row p { line-height: 1.45; }

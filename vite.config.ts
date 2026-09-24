@@ -10,6 +10,18 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // The barcode decoder (~1 MB .wasm) is only for the packaged-food
+        // scanner — don't make every install download it; cache it on first use.
+        globIgnores: ['**/*.wasm'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith('.wasm'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'barcode-wasm', expiration: { maxEntries: 2 } },
+          },
+        ],
+      },
       // Include the apple touch icon in the precache
       includeAssets: ['apple-touch-icon.png', 'favicon-32x32.png', 'favicon-16x16.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
