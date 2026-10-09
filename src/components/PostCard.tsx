@@ -1,3 +1,4 @@
+import { Heart, MessageCircle, Send } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient, useMutation } from '@tanstack/react-query'
@@ -185,17 +186,15 @@ export function PostCard({ item, index = 0, viewerId, optimisticLiked, likeAnima
         {/* ── Interaction row ─────────────────────────────── */}
         <div className="flex items-center gap-4" style={{ marginTop: 14 }}>
           <button type="button" onClick={handleLikeWithHaptic} className={`flex items-center gap-1.5 ${displayLiked ? 'liked font-semibold' : 'muted'}`}>
-            <span className={likeAnimating ? 'animate-pop inline-block' : 'inline-block'} style={{ fontSize: 16, lineHeight: 1 }}>
-              {displayLiked ? '♥' : '♡'}
-            </span>
+            <Heart size={19} fill={displayLiked ? 'currentColor' : 'none'} className={likeAnimating ? 'animate-pop' : undefined} aria-hidden="true" />
             {displayLiked ? 'Liked' : 'Like'}
           </button>
           <button type="button" onClick={() => navigate(detailPath)} className="muted flex items-center gap-1.5">
-            <span style={{ fontSize: 16, lineHeight: 1 }}>◌</span>
+            <MessageCircle size={19} aria-hidden="true" />
             {commentCount} {commentCount === 1 ? 'comment' : 'comments'}
           </button>
           <button type="button" onClick={() => setShowShare(true)} className="muted ml-auto flex items-center gap-1.5">
-            <span style={{ fontSize: 16, lineHeight: 1 }}>↗</span> Share
+            <Send size={18} aria-hidden="true" /> Share
           </button>
         </div>
         {likedBy && (

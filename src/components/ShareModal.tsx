@@ -2,12 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { enableShareLink, shareUrl } from '../lib/shareLink'
 import { mealCards, type MealShareData } from '../lib/shareCards'
+import { Download, Link, Share } from 'lucide-react'
 import { useToast } from './Toast'
+import { InstagramIcon, WhatsAppIcon, XIcon } from './BrandIcons'
 
 export interface ShareCardSpec {
   label: string
   render: () => Promise<Blob>
-  transparent?: boolean
 }
 
 interface ShareSheetProps {
@@ -85,6 +86,20 @@ export function ShareSheet({ cards, fileName, message, link = null, prepareLink,
     window.open(`https://wa.me/?text=${encodeURIComponent(linked ? `${message} ${link}` : message)}`, '_blank', 'noopener')
   }
 
+  async function handleX() {
+    if (!link) return
+    const linked = await withLink()
+    const params = new URLSearchParams({ text: message, ...(linked ? { url: link } : {}) })
+    window.open(`https://x.com/intent/post?${params}`, '_blank', 'noopener')
+  }
+
+  /** Instagram has no web share link: hand the image to the phone's share sheet (pick Instagram), or save it. */
+  async function handleInstagram() {
+    if (canShareFile) return handleShare()
+    handleSave()
+    toast('Image saved — post it from Instagram')
+  }
+
   function handleSave() {
     if (!ready) return
     const a = document.createElement('a')
@@ -118,7 +133,7 @@ export function ShareSheet({ cards, fileName, message, link = null, prepareLink,
           {cards.map((card, i) => {
             const img = images[i]
             return (
-              <div key={card.label} className={`share-card ${card.transparent ? 'see-through' : ''}`} aria-label={card.label}>
+              <div key={card.label} className="share-card" aria-label={card.label}>
                 {img === 'error'
                   ? <div className="grid h-full place-items-center text-center"><span className="small muted">Couldn’t draw this card<br /><button type="button" className="pill" style={{ marginTop: 8 }} onClick={() => { setImages([]); setAttempt((a) => a + 1) }}>Try again</button></span></div>
                   : img ? <img src={img.url} alt={`${card.label} card`} /> : <div className="skeleton h-full w-full !rounded-none" />}
@@ -130,12 +145,13 @@ export function ShareSheet({ cards, fileName, message, link = null, prepareLink,
         <p className="small muted text-center" style={{ margin: '12px 0 4px' }}>{cards[index]?.label} · {note}</p>
 
         <div className="share-actions">
-          {canShareFile && <button type="button" onClick={handleShare} disabled={!ready}><span className="share-icon ink">↗</span>Share</button>}
-          {link && <button type="button" onClick={handleWhatsApp}><span className="share-icon whatsapp">✆</span>WhatsApp</button>}
-          <button type="button" onClick={handleSave} disabled={!ready}><span className="share-icon">⤓</span>Save</button>
-          {link && <button type="button" onClick={handleCopyLink}><span className="share-icon">⛓</span>Copy link</button>}
+          <button type="button" onClick={handleInstagram} disabled={!ready}><span className="share-icon instagram"><InstagramIcon /></span>Instagram</button>
+          {link && <button type="button" onClick={handleWhatsApp}><span className="share-icon whatsapp"><WhatsAppIcon /></span>WhatsApp</button>}
+          {link && <button type="button" onClick={handleX}><span className="share-icon x"><XIcon /></span>X</button>}
+          {link && <button type="button" onClick={handleCopyLink}><span className="share-icon"><Link size={22} /></span>Copy link</button>}
+          <button type="button" onClick={handleSave} disabled={!ready}><span className="share-icon"><Download size={22} /></span>Save</button>
+          {canShareFile && <button type="button" onClick={handleShare} disabled={!ready}><span className="share-icon"><Share size={21} /></span>More</button>}
         </div>
-        {canShareFile && <p className="tiny muted text-center" style={{ marginTop: 8 }}>Share sends the image to Instagram, WhatsApp and more</p>}
 
         <button type="button" onClick={onClose} className="btn" style={{ marginTop: 14 }}>Done</button>
       </div>

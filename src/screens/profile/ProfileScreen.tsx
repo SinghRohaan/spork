@@ -26,6 +26,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { SporkOrb } from '../../components/brand/SporkOrb'
 import { ProfileBadges } from '../../components/Badges'
+import { dailyGoals } from '../../lib/accountability'
 
 export default function ProfileScreen() {
   const navigate       = useNavigate()
@@ -114,7 +115,7 @@ export default function ProfileScreen() {
   if (!user) return null
 
   const calorieGoal    = user.calorie_goal ?? 2000
-  const proteinGoal    = (user as unknown as { protein_goal?: number }).protein_goal ?? 0
+  const proteinGoal    = dailyGoals(calorieGoal, user.protein_goal).protein
   const todayCal       = stats?.caloriesLogged ?? 0
   const todayProtein   = stats?.proteinLogged ?? 0
   const ringPct        = computeCalorieRingPct(todayCal, calorieGoal)

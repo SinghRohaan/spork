@@ -106,3 +106,26 @@ export function useMarkNotificationsRead() {
     },
   })
 }
+
+/** Deletes every notification sent to the signed-in user ("Clear all"). */
+export function useClearNotifications() {
+  const { session } = useSession()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      if (!session) throw new Error('Not signed in')
+      const { data, error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('recipient_id', session.user.id)
+        .select('id')
+      if (error) throw error
+      // Without the delete policy (migration 0020) the database silently deletes nothing.
+      if (!data?.length) throw new Error('Nothing was cleared')
+    },
+    onSuccess: () => {
+      queryClient.setQueriesData({ queryKey: ['notifications'] }, [])
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    },
+  })
+}

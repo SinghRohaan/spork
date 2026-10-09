@@ -1,3 +1,4 @@
+import { Heart, MessageCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useSession } from '../../hooks/useSession'
@@ -163,11 +164,11 @@ export default function MealDetail() {
 
       <div className="flex items-center gap-4" style={{ margin: '17px 0' }}>
         <button type="button" onClick={handleToggleLike} className={`flex items-center gap-1.5 ${displayLiked ? 'liked font-semibold' : ''}`}>
-          <span style={{ fontSize: 16, lineHeight: 1 }}>{displayLiked ? '♥' : '♡'}</span>
+          <Heart size={19} fill={displayLiked ? 'currentColor' : 'none'} aria-hidden="true" />
           {displayLiked ? 'Liked' : 'Like'}
         </button>
         <span className="flex items-center gap-1.5">
-          <span style={{ fontSize: 16, lineHeight: 1 }}>◌</span>
+          <MessageCircle size={19} aria-hidden="true" />
           {comments.length} {comments.length === 1 ? 'comment' : 'comments'}
         </span>
       </div>
@@ -278,7 +279,7 @@ function CommentRow({
           {onLike && (
             <button type="button" onClick={onLike} className={liked ? 'liked' : 'muted'}
               aria-pressed={liked} aria-label={liked ? 'Unlike comment' : 'Like comment'}>
-              <span style={{ fontSize: 13, lineHeight: 1 }}>{liked ? '♥' : '♡'}</span>
+              <Heart size={14} fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />
               {likeCount > 0 && <span>{likeCount}</span>}
             </button>
           )}

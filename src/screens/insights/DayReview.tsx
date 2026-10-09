@@ -1,3 +1,4 @@
+import { Send } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { TopBar } from '../../components/TopBar'
@@ -52,7 +53,7 @@ export default function DayReview() {
   return (
     <div>
       <TopBar title="Day review" back="/home/insights"
-        right={review.score != null && user ? <button type="button" className="circle" aria-label="Share this day" onClick={() => setSharing(true)}>↗</button> : undefined} />
+        right={review.score != null && user ? <button type="button" className="circle" aria-label="Share this day" onClick={() => setSharing(true)}><Send size={18} aria-hidden="true" /></button> : undefined} />
       {sharing && review.score != null && user && (
         <ShareSheet
           cards={dayCards({

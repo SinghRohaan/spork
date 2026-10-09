@@ -12,6 +12,7 @@ import { TopBar } from '../../components/TopBar'
 import { BlockedAccounts } from '../../components/FriendActions'
 import { isValidUsernameFormat } from '../../lib/username'
 import { deleteAccount } from '../../lib/deleteAccount'
+import { dailyGoals } from '../../lib/accountability'
 
 export default function SettingsScreen() {
   const queryClient   = useQueryClient()
@@ -44,7 +45,8 @@ export default function SettingsScreen() {
   if (!user) return null
 
   const calorieGoal = user.calorie_goal ?? 2000
-  const proteinGoal = (user as unknown as { protein_goal?: number }).protein_goal ?? 0
+  const proteinGoal = user.protein_goal ?? 0
+  const suggestedProtein = dailyGoals(calorieGoal, null).protein
 
   function saveField(fields: Parameters<typeof updateProfile.mutate>[0]) {
     updateProfile.mutate(fields, {
@@ -105,7 +107,7 @@ export default function SettingsScreen() {
     useOnboardingStore.getState().reset()
   }
 
-  const inlineInput = 'editable w-20 bg-transparent text-right font-semibold outline-none'
+  const inlineInput = 'editable w-24 text-right font-semibold outline-none'
 
   return (
     <div>
@@ -150,11 +152,12 @@ export default function SettingsScreen() {
               type="number"
               inputMode="numeric"
               value={proteinGoalVal || proteinGoal || ''}
-              placeholder="0"
+              placeholder={String(suggestedProtein)}
               onChange={(e) => setProteinGoalVal(e.target.value)}
               onBlur={() => {
+                // Leaving the field without typing used to save 0 and wipe the goal.
                 const n = Number(proteinGoalVal)
-                if (n >= 0 && n <= 500) saveField({ protein_goal: n })
+                if (proteinGoalVal !== '' && n >= 20 && n <= 500 && n !== proteinGoal) saveField({ protein_goal: n })
                 setProteinGoalVal('')
               }}
               className={inlineInput}
@@ -200,7 +203,7 @@ export default function SettingsScreen() {
               value={reminderTime || user.reminder_time || ''}
               onChange={(e) => setReminderTime(e.target.value)}
               onBlur={() => { if (reminderTime) saveField({ reminder_time: reminderTime }) }}
-              className="editable bg-transparent font-semibold outline-none"
+              className="editable font-semibold outline-none"
               aria-label="Reminder time"
             />
           </div>

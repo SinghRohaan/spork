@@ -264,6 +264,7 @@
   .pill { display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 8px 12px; border-radius: 50px; background: var(--color-paper); font-size: 11px; white-space: nowrap; }
   .pill.sel { background: var(--color-ink); color: var(--color-on-ink); }
   .pill.tint { background: var(--color-soft); }
+  .pill.tint.sel { background: var(--color-ink); }
   .pill:disabled { opacity: 0.45; }
   .badge { border-radius: 20px; background: var(--color-soft2); padding: 9px 12px; font-size: 11px; }
   .code { font-family: var(--font-display); font-weight: 500; font-size: 23px; letter-spacing: 1px; }
@@ -314,18 +315,29 @@
   .breakdown-item small { font-size: 11.5px; }
   .breakdown-emoji { width: 38px; height: 38px; border-radius: 13px; background: var(--color-paper); display: grid; place-items: center; font-size: 19px; flex: none; }
   /* Share sheet: swipe between square cards */
+  .water-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--color-line); }
+  .water-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 99px; background: var(--color-soft); color: var(--color-ink); font-size: 12.5px; font-weight: 600; flex: none; }
+  .water-chip.done { background: var(--color-teal-soft); color: var(--color-teal); }
+  .notif-row { display: flex; width: 100%; align-items: center; gap: 12px; padding: 12px 2px; text-align: left; font-size: 14px; border-bottom: 1px solid var(--color-line); }
+  .notif-row:last-child { border-bottom: 0; }
+  .notif-row b { font-weight: 600; }
+  .notif-row small { font-size: 12px; margin-top: 2px; }
+  .notif-like { color: var(--color-heart); flex: none; }
+  .notif-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-teal); flex: none; }
+  .notif-dot.read { visibility: hidden; }
   .share-sheet { width: 100%; max-width: 430px; max-height: 100dvh; overflow-y: auto; border-radius: 36px 36px 0 0; background: var(--color-canvas); padding: 16px 20px calc(24px + env(safe-area-inset-bottom)); }
   .share-cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .share-cards::-webkit-scrollbar { display: none; }
   .share-card { flex: 0 0 100%; aspect-ratio: 1; max-height: 52dvh; border-radius: 22px; overflow: hidden; scroll-snap-align: center; scroll-snap-stop: always; background: #1b1b1b; }
   .share-card img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .share-card.see-through { background: repeating-conic-gradient(#2a2a2a 0 25%, #202020 0 50%) 0 0 / 18px 18px; }
-  .share-actions { display: flex; justify-content: center; gap: 14px; margin-top: 14px; }
-  .share-actions button { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; color: var(--color-quiet); }
+  .share-actions { display: flex; justify-content: safe center; gap: 12px; margin: 16px -20px 0; padding: 0 20px 2px; overflow-x: auto; scrollbar-width: none; }
+  .share-actions::-webkit-scrollbar { display: none; }
+  .share-actions button { flex: none; width: 60px; display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 11.5px; line-height: 1.2; color: var(--color-quiet); }
   .share-actions button:disabled { opacity: 0.4; }
-  .share-icon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--color-paper); color: var(--color-ink); font-size: 20px; }
-  .share-icon.ink { background: var(--color-ink); color: var(--color-canvas); }
+  .share-icon { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: var(--color-paper); color: var(--color-ink); }
+  .share-icon.instagram { background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fd5949 45%, #d6249f 60%, #285aeb 90%); color: #fff; }
   .share-icon.whatsapp { background: #25d366; color: #fff; }
+  .share-icon.x { background: #000; color: #fff; box-shadow: inset 0 0 0 1px #333; }
   /* Badges */
   .badge-medal { display: grid; place-items: center; margin: 0 auto; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); position: relative; }
   .badge-medal::before { content: ''; position: absolute; inset: 8%; clip-path: inherit; background: #1f1f1f; }
@@ -496,7 +508,7 @@
   .legal a { text-decoration: underline; color: var(--color-ink); }
 
   .icon-box { border-radius: 42px; background: var(--color-soft); display: grid; place-items: center; font-family: var(--font-display); font-weight: 500; color: var(--color-ink); }
-  .editable { border-bottom: 1px dashed var(--color-ink); }
+  .editable { background: var(--color-soft); border-radius: 12px; padding: 7px 11px; }
   .error-text { color: var(--color-error); font-size: 12px; margin-top: 10px; }
   .scroll-hide { scrollbar-width: none; -ms-overflow-style: none; }
   .scroll-hide::-webkit-scrollbar { display: none; }

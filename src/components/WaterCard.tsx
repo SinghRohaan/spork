@@ -1,3 +1,4 @@
+import { Check, SlidersHorizontal } from 'lucide-react'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSetWater, useWater, useWaterSettings } from '../hooks/useWater'
@@ -78,9 +79,13 @@ export function WaterCard() {
         ))}
       </div>
 
-      <div className="flex items-center justify-between tiny muted" style={{ marginTop: 10 }}>
-        <span>{ml >= goalMl ? 'Goal reached 🎉' : `Tap a glass or + to add ${glassMl} ml`}</span>
-        <button type="button" onClick={() => setShowSettings(true)} className="tiny muted">⚙ Glass &amp; goal</button>
+      <div className="water-foot">
+        {ml >= goalMl
+          ? <span className="water-chip done"><Check size={15} strokeWidth={2.6} aria-hidden="true" />Goal reached</span>
+          : <span className="tiny muted">Tap a glass or + to add {glassMl} ml</span>}
+        <button type="button" onClick={() => setShowSettings(true)} className="water-chip">
+          <SlidersHorizontal size={15} aria-hidden="true" />Goal &amp; glass
+        </button>
       </div>
 
       {showSettings && <WaterSettings goalMl={goalMl} glassMl={glassMl} onClose={() => setShowSettings(false)} />}
