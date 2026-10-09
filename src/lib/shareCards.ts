@@ -336,3 +336,46 @@ export function dayCards(d: DayShareData) {
     { label: 'Sticker', render: () => dayStickerCard(d), transparent: true },
   ]
 }
+
+// ── Badge card ────────────────────────────────────────────────────────────────
+
+export interface BadgeShareData {
+  username: string
+  name: string
+  emoji: string
+  colors: [string, string]
+  done: string
+  earnedOn: string
+}
+
+/** A pointy-top hexagon centred on (cx, cy). */
+function hexagon(ctx: Ctx, cx: number, cy: number, r: number) {
+  ctx.beginPath()
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 3 * i - Math.PI / 2
+    const x = cx + r * Math.cos(a), y = cy + r * Math.sin(a)
+    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y)
+  }
+  ctx.closePath()
+}
+
+/** The medal, its name and when it was earned. */
+export function badgeCard(d: BadgeShareData): Promise<Blob> {
+  return drawCard((ctx) => {
+    const cx = CARD / 2, cy = 128
+    const glow = ctx.createRadialGradient(cx, cy, 10, cx, cy, 170)
+    glow.addColorStop(0, `${d.colors[1]}55`); glow.addColorStop(1, 'rgba(27,27,27,0)')
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, CARD, CARD)
+    const rim = ctx.createLinearGradient(cx - 60, cy - 70, cx + 60, cy + 70)
+    rim.addColorStop(0, d.colors[0]); rim.addColorStop(1, d.colors[1])
+    hexagon(ctx, cx, cy, 72); ctx.fillStyle = rim; ctx.fill()
+    hexagon(ctx, cx, cy, 61); ctx.fillStyle = '#1f1f1f'; ctx.fill()
+    ctx.font = '52px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(d.emoji, cx, cy + 3)
+    text(ctx, 'BADGE UNLOCKED', cx, 236, 11, { color: d.colors[0], align: 'center' })
+    text(ctx, d.name, cx, 266, 28, { weight: 500, display: true, align: 'center', maxW: CARD - 40 })
+    text(ctx, `${d.done} · ${new Date(`${d.earnedOn}T12:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`, cx, 290, 12, { weight: 400, color: QUIET, align: 'center', maxW: CARD - 40 })
+    footer(ctx, d.username)
+  })
+}

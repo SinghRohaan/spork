@@ -18,6 +18,7 @@ import { startLogAgain, type PastMeal } from '../../lib/logAgain'
 import { itemsForPost } from '../../lib/mealItems'
 import type { MealShareData } from '../../lib/shareCards'
 import { ShareModal } from '../../components/ShareModal'
+import { BadgeCelebration } from '../../components/Badges'
 import { useUsualMeals } from '../../hooks/useUsualMeals'
 
 type Step = 'capture' | 'scan' | 'loading' | 'edit' | 'not-food' | 'celebration'
@@ -196,6 +197,7 @@ export default function LogFlow() {
       queryClient.invalidateQueries({ queryKey: ['feed'] })
       queryClient.invalidateQueries({ queryKey: ['todayStats'] })
       queryClient.invalidateQueries({ queryKey: ['friendProfile'] })
+      queryClient.invalidateQueries({ queryKey: ['badges'] })
 
       const caloriesLogged = draft.calories ?? 0
       const calorieGoal = stats?.calorieGoal ?? user.calorie_goal ?? 2000
@@ -381,6 +383,7 @@ function CelebrationScreen({ data, onViewPost, onDone }: {
         <button type="button" onClick={onViewPost} className="btn light flex-1">View post</button>
         <button type="button" onClick={onDone} className="btn light flex-1">Back to feed</button>
       </div>
+      <BadgeCelebration />
       {showShare && <ShareModal meal={data.share} shareLogId={data.logId} isPrivate={data.isPrivate} onClose={() => setShowShare(false)} />}
     </div>
   )

@@ -25,6 +25,7 @@ import {
 } from '../../lib/profileStats'
 import { useQueryClient } from '@tanstack/react-query'
 import { SporkOrb } from '../../components/brand/SporkOrb'
+import { ProfileBadges } from '../../components/Badges'
 
 export default function ProfileScreen() {
   const navigate       = useNavigate()
@@ -250,6 +251,8 @@ export default function ProfileScreen() {
           </div>
         </div>
       </div>
+
+      <ProfileBadges />
 
       {/* ── Weekly stats ──────────────────────────────────────────── */}
       <div className="tile-grid">

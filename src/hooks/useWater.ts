@@ -51,6 +51,8 @@ export function useSetWater() {
       return { key, previous }
     },
     onError: (_e, _ml, ctx) => { if (ctx) queryClient.setQueryData(ctx.key, ctx.previous) },
+    // Water badges may have just been earned.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['badges'] }),
   })
 }
 

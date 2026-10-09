@@ -8,6 +8,8 @@ import { dayReview, weekStart, weekSummary, type Tone } from '../../lib/accounta
 import { ShareSheet } from '../../components/ShareModal'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { dayCards } from '../../lib/shareCards'
+import { DayBadges } from '../../components/Badges'
+import { localDateKey } from '../../lib/progress'
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const MACRO_COLOR = { calories: 'var(--color-ink)', protein: 'var(--macro-protein)', carbs: 'var(--macro-carbs)', fat: 'var(--macro-fat)' }
@@ -91,6 +93,8 @@ export default function DayReview() {
         <h3 style={{ marginTop: 12 }}>{review.label}</h3>
         <p className="small muted" style={{ marginTop: 4 }}>{review.summary}</p>
       </div>
+
+      <div style={{ marginTop: 14 }}><DayBadges day={localDateKey(dates[dayIndex])} /></div>
 
       {/* ── Planned vs eaten ───────────────────────────────── */}
       <div className="card">

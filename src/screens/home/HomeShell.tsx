@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { BottomTabBar } from '../../components/BottomTabBar'
+import { BadgeCelebration } from '../../components/Badges'
 
 export function HomeShell() {
   const { pathname } = useLocation()
@@ -10,6 +11,8 @@ export function HomeShell() {
         <Outlet />
       </div>
       <BottomTabBar />
+      {/* Held back while logging; the Logged! screen shows its own */}
+      <BadgeCelebration paused={pathname === '/home/log'} />
     </div>
   )
 }

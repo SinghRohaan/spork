@@ -27,6 +27,7 @@ import MealDetail from './screens/log/MealDetail'
 import EditPost from './screens/log/EditPost'
 import Connections from './screens/friends/Connections'
 import StreaksRewards from './screens/rewards/StreaksRewards'
+import Badges from './screens/badges/Badges'
 import ProfileScreen from './screens/profile/ProfileScreen'
 import SettingsScreen from './screens/profile/SettingsScreen'
 import Friends from './screens/friends/Friends'
@@ -86,6 +87,7 @@ export default function App() {
           <Route path="insights/review"  element={<DayReview />} />
           <Route path="log"              element={<LogFlow />} />
           <Route path="rewards"          element={<StreaksRewards />} />
+          <Route path="badges"           element={<Badges />} />
           <Route path="friends"          element={<Friends />} />
           <Route path="friend/:username" element={<FriendProfile />} />
           <Route path="challenges/new"   element={<NewChallenge />} />
