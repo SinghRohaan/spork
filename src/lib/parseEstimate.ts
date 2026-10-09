@@ -30,7 +30,7 @@ function isFiniteNonNegativeNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
-function parseItems(raw: unknown): ParsedEstimateItem[] {
+export function parseItems(raw: unknown): ParsedEstimateItem[] {
   if (!Array.isArray(raw)) return []
   const items: ParsedEstimateItem[] = []
   for (const item of raw) {

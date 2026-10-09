@@ -26,7 +26,7 @@ export function useMyPosts(limit = 100) {
 
       const { data: author } = await supabase
         .from('users')
-        .select('id, name, username, photo_url, streak_count, streak_last_log_date')
+        .select('id, name, username, photo_url, streak_count, streak_last_log_date, calorie_goal, protein_goal')
         .eq('id', userId!)
         .maybeSingle()
 

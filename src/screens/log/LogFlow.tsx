@@ -15,6 +15,7 @@ import { useTodayStats } from '../../hooks/useTodayStats'
 import { computeNextStreak, getEffectiveStreak } from '../../lib/streak'
 import { hapticSuccess, hapticCelebration, hapticError } from '../../lib/haptics'
 import { startLogAgain, type PastMeal } from '../../lib/logAgain'
+import { itemsForPost } from '../../lib/mealItems'
 import { useUsualMeals } from '../../hooks/useUsualMeals'
 
 type Step = 'capture' | 'scan' | 'loading' | 'edit' | 'not-food' | 'celebration'
@@ -170,6 +171,7 @@ export default function LogFlow() {
         finalProteinG: draft.proteinG,
         finalCarbsG: draft.carbsG,
         finalFatG: draft.fatG,
+        items: itemsForPost(draft.items, draft.portionMultiplier),
         currentStreakCount: user.streak_count,
         currentStreakLastLogDate: user.streak_last_log_date,
       })

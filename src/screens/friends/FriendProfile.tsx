@@ -115,6 +115,8 @@ export default function FriendProfile() {
       photo_url:           user.photo_url,
       streak_count:        user.streak_count,
       streak_last_log_date: user.streak_last_log_date,
+      calorie_goal:        user.calorie_goal,
+      protein_goal:        user.protein_goal,
     },
     photoSignedUrl: log.photoSignedUrl,
     likeCount:      log.likeCount,

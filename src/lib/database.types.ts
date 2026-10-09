@@ -118,6 +118,8 @@ export interface Database {
           created_at: string
           /** Set when the owner first shares a public link (migration 0012). */
           shared_at?: string | null
+          /** The items as posted, after the user's edits (migration 0018). */
+          items?: unknown
         }
         Insert: Partial<Database['public']['Tables']['logs']['Row']> & {
           user_id: string

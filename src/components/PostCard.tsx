@@ -11,6 +11,7 @@ import { getEffectiveStreak } from '../lib/streak'
 import { ShareModal } from './ShareModal'
 import { LikersSheet } from './LikersSheet'
 import { FeedImage } from './FeedImage'
+import { MealBreakdown } from './MealBreakdown'
 import { PhotoViewer } from './PhotoViewer'
 import { Avatar } from './Avatar'
 import { useToast } from './Toast'
@@ -58,6 +59,7 @@ export function PostCard({ item, index = 0, viewerId, optimisticLiked, likeAnima
   const [showPhoto, setShowPhoto]   = useState(false)
   const [showMenu,  setShowMenu]    = useState(false)
   const [showLikers, setShowLikers] = useState(false)
+  const [slide, setSlide]           = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Close the ••• menu on any tap outside it. A full-screen backdrop element
@@ -148,15 +150,23 @@ export function PostCard({ item, index = 0, viewerId, optimisticLiked, likeAnima
           )}
         </div>
 
-        {/* ── Photo ───────────────────────────────────────── */}
-        {photoSignedUrl && (
-          <FeedImage
-            src={photoSignedUrl}
-            alt={log.name ?? 'Meal photo'}
-            className="photo"
-            style={{ marginTop: 13 }}
-            onClick={() => setShowPhoto(true)}
-          />
+        {/* ── Photo, then swipe for the meal breakdown ───── */}
+        {photoSignedUrl ? (
+          <>
+            <div className="post-slides" onScroll={(e) => setSlide(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}>
+              <div className="post-slide photo-slide">
+                <FeedImage src={photoSignedUrl} alt={log.name ?? 'Meal photo'} className="photo" onClick={() => setShowPhoto(true)} />
+                <span className="slide-count">1/2</span>
+              </div>
+              <div className="post-slide">
+                <MealBreakdown log={log} author={author} onMore={() => navigate(detailPath)} />
+                <span className="slide-count">2/2</span>
+              </div>
+            </div>
+            <div className="slide-dots" aria-hidden="true"><i className={slide === 0 ? 'on' : ''} /><i className={slide === 1 ? 'on' : ''} /></div>
+          </>
+        ) : (
+          <div style={{ marginTop: 13 }}><MealBreakdown log={log} author={author} onMore={() => navigate(detailPath)} /></div>
         )}
 
         {/* ── Meal name + calories ────────────────────────── */}

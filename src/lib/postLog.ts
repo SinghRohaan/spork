@@ -3,6 +3,7 @@ import { compressImage } from './compressImage'
 import { uploadMealPhoto } from './mealPhotos'
 import { computeNextStreak } from './streak'
 import type { EstimateResult, MealType, Visibility, Satiety } from '../store/logDraft'
+import type { MealItem } from './mealItems'
 
 export interface PostLogInput {
   userId: string
@@ -18,6 +19,8 @@ export interface PostLogInput {
   finalProteinG: number | null
   finalCarbsG: number | null
   finalFatG: number | null
+  /** The items as posted (after edits), for the swipe breakdown. */
+  items: MealItem[] | null
   currentStreakCount: number
   currentStreakLastLogDate: string | null
 }
@@ -51,12 +54,14 @@ export async function postLog(input: PostLogInput): Promise<string> {
     ai_raw_response: input.estimate?.raw ?? null,
   }
 
-  // Try full insert (with caption + satiety)
-  const { error: insertError } = await supabase.from('logs').insert({
-    ...coreFields,
-    caption: input.caption || null,
-    satiety: input.satiety,
-  })
+  // Try full insert (with caption + satiety + items)
+  const extraFields = { caption: input.caption || null, satiety: input.satiety }
+  let { error: insertError } = await supabase.from('logs').insert({ ...coreFields, ...extraFields, items: input.items })
+
+  // Before migration 0018 there's no items column — post without them.
+  if (insertError?.message?.includes('items')) {
+    ({ error: insertError } = await supabase.from('logs').insert({ ...coreFields, ...extraFields }))
+  }
 
   if (insertError) {
     // If the error is about a missing column (caption/satiety not migrated yet),

@@ -9,7 +9,7 @@ type UserRow = Database['public']['Tables']['users']['Row']
 
 export interface FeedItem {
   log: LogRow
-  author: Pick<UserRow, 'id' | 'name' | 'username' | 'photo_url' | 'streak_count' | 'streak_last_log_date'>
+  author: Pick<UserRow, 'id' | 'name' | 'username' | 'photo_url' | 'streak_count' | 'streak_last_log_date' | 'calorie_goal' | 'protein_goal'>
   photoSignedUrl: string | null
   likeCount: number
   likedByViewer: boolean
@@ -53,7 +53,7 @@ export function useFeed() {
       const authorIds = [...new Set(logs.map((log) => log.user_id))]
       const { data: authors, error: authorsError } = await supabase
         .from('users')
-        .select('id, name, username, photo_url, streak_count, streak_last_log_date')
+        .select('id, name, username, photo_url, streak_count, streak_last_log_date, calorie_goal, protein_goal')
         .in('id', authorIds)
 
       if (authorsError) throw authorsError
