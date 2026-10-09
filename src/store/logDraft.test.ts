@@ -25,6 +25,20 @@ describe('log draft — editable AI items', () => {
     expect(s().calories).toBe(610)
   })
 
+  it('takes the totals from the items when the AI’s own totals disagree', () => {
+    const whey = estimate([item('Whey isolate', 120, 27, 2, 1)])
+    whey.parsed = { ...whey.parsed, protein_g: 30 }
+    s().applyEstimate(whey, 'dinner', 'public')
+    expect([s().calories, s().proteinG, s().carbsG, s().fatG]).toEqual([120, 27, 2, 1])
+  })
+
+  it('falls back to the AI’s totals when there are no items', () => {
+    const bare = estimate([])
+    bare.parsed = { ...bare.parsed, calories: 300, protein_g: 12, carbs_g: 40, fat_g: 9 }
+    s().applyEstimate(bare, 'snack', 'public')
+    expect([s().calories, s().proteinG, s().carbsG, s().fatG]).toEqual([300, 12, 40, 9])
+  })
+
   it('editing an item recomputes the totals and marks it edited', () => {
     s().applyEstimate(estimate([item('Rice', 360), item('Soy chunks curry', 250, 20)]), 'lunch', 'public')
     s().updateItem(1, { name: 'Prawn curry', calories: 200, protein_g: 24 })

@@ -17,6 +17,12 @@ describe('postedItems', () => {
     const log = { ai_raw_response: ai([item('Rice', 250), item('Dal', 150)]), calories_final: 600, calories_estimate: 400 }
     expect(postedItems(log)).toEqual([])
   })
+  it('hides items whose protein doesn’t match the post (30 g posted, item says 27 g)', () => {
+    const whey = { ...item('Whey isolate', 120), protein_g: 27, carbs_g: 2, fat_g: 1 }
+    const log = { items: [whey], ai_raw_response: null, calories_final: 120, calories_estimate: 120, protein_final_g: 30, carbs_final_g: 2, fat_final_g: 1 }
+    expect(postedItems(log)).toEqual([])
+    expect(postedItems({ ...log, protein_final_g: 27 })).toHaveLength(1)
+  })
   it('handles posts with no items', () => {
     expect(postedItems({ ai_raw_response: null, calories_final: 300, calories_estimate: null })).toEqual([])
   })

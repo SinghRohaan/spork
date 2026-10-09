@@ -19,25 +19,42 @@ interface LogLike {
   ai_raw_response: unknown
   calories_final: number | null
   calories_estimate: number | null
+  protein_final_g?: number | null
+  protein_estimate_g?: number | null
+  carbs_final_g?: number | null
+  carbs_estimate_g?: number | null
+  fat_final_g?: number | null
+  fat_estimate_g?: number | null
 }
 
 function toItem(i: ParsedEstimateItem): MealItem {
   return { name: i.name, quantity: i.quantity, grams: i.grams, calories: i.calories, protein_g: i.protein_g, carbs_g: i.carbs_g, fat_g: i.fat_g }
 }
 
+/** Whether the items' sum is close enough to the posted total to show both. */
+const adds = (sum: number, total: number, slack: number) => Math.abs(sum - total) <= Math.max(slack, total * 0.05)
+
 /**
  * The post's items, or [] when we can't show them truthfully. Saved items
  * (migration 0018) win; older posts fall back to the AI's list. Either way
- * the items must add up to the posted calories (within 5%) — if the user
- * typed different totals, a list that doesn't match would mislead.
+ * the items must add up to the posted calories, protein, carbs and fat
+ * (within 5%) — if the totals were typed differently, a list that doesn't
+ * match would mislead.
  */
 export function postedItems(log: LogLike): MealItem[] {
   const total = log.calories_final ?? log.calories_estimate ?? 0
   const saved = parseItems(log.items)
   const items = saved.length ? saved : (parseEstimateResponse(log.ai_raw_response)?.items ?? [])
   if (!items.length || total <= 0) return []
-  const sum = items.reduce((t, i) => t + i.calories, 0)
-  return Math.abs(sum - total) <= Math.max(10, total * 0.05) ? items.map(toItem) : []
+  const sum = (k: 'calories' | 'protein_g' | 'carbs_g' | 'fat_g') => items.reduce((t, i) => t + i[k], 0)
+  const macro = (final: number | null | undefined, estimate: number | null | undefined) => final ?? estimate
+  const checks: [number, number | null | undefined][] = [
+    [sum('protein_g'), macro(log.protein_final_g, log.protein_estimate_g)],
+    [sum('carbs_g'), macro(log.carbs_final_g, log.carbs_estimate_g)],
+    [sum('fat_g'), macro(log.fat_final_g, log.fat_estimate_g)],
+  ]
+  const matches = adds(sum('calories'), total, 10) && checks.every(([s, t]) => t == null || adds(s, t, 1))
+  return matches ? items.map(toItem) : []
 }
 
 /** Items to save with a new post: the review screen's list, scaled by the portion picked. */

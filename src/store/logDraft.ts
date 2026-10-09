@@ -132,18 +132,19 @@ export const useLogDraftStore = create<LogDraftState>((set, get) => ({
 
   applyEstimate: (estimate, mealType, visibility) => {
     const name = defaultMealNameFromRaw(estimate?.raw, mealType)
+    const items = estimate?.parsed.items ?? []
     set({
       estimate,
-      items: estimate?.parsed.items ?? [],
+      items,
       mealType,
       visibility,
       portionMultiplier: 1,
       mealName: name,
       autoMealName: name,
-      calories: estimate?.parsed.calories ?? null,
-      proteinG: estimate?.parsed.protein_g ?? null,
-      carbsG: estimate?.parsed.carbs_g ?? null,
-      fatG: estimate?.parsed.fat_g ?? null,
+      // Totals are the item sum, not the AI's own totals: the AI's totals
+      // sometimes disagree with its items (e.g. 30 g vs 27 g protein).
+      calories: null, proteinG: null, carbsG: null, fatG: null,
+      ...scaledTotals(items, estimate, 1),
     })
   },
 
