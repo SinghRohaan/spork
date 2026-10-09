@@ -53,41 +53,42 @@ export function useMealDetail(logId: string | undefined) {
       if (logError) throw logError
       if (!log) return null
 
-      const { data: author, error: authorError } = await supabase
-        .from('users')
-        .select('id, name, username, photo_url')
-        .eq('id', log.user_id)
-        .single()
+      // Everything below depends only on the post, so fetch it all at once.
+      const [authorRes, signed, likesRes, commentsRes] = await Promise.all([
+        supabase.from('users').select('id, name, username, photo_url').eq('id', log.user_id).single(),
+        log.photo_url ? signMealPhotos([log.photo_url]) : Promise.resolve(new Map<string, string>()),
+        supabase.from('log_likes').select('user_id').eq('log_id', logId!),
+        supabase
+          .from('log_comments')
+          .select('id, user_id, parent_comment_id, body, created_at')
+          .eq('log_id', logId!)
+          .order('created_at', { ascending: true }),
+      ])
+      const { data: author, error: authorError } = authorRes
       if (authorError) throw authorError
+      const photoSignedUrl = log.photo_url ? (signed.get(log.photo_url) ?? null) : null
 
-      let photoSignedUrl: string | null = null
-      if (log.photo_url) {
-        photoSignedUrl = (await signMealPhotos([log.photo_url])).get(log.photo_url) ?? null
-      }
-
-      const { data: likes, error: likesError } = await supabase
-        .from('log_likes')
-        .select('user_id')
-        .eq('log_id', logId!)
+      const { data: likes, error: likesError } = likesRes
       if (likesError) throw likesError
       const likeRows = likes ?? []
       const likeCount = likeRows.length
       const likedByViewer = likeRows.some((l) => l.user_id === viewerId)
       const likerIds = likeRows.map((l) => l.user_id)
 
-      const { data: commentRows, error: commentsError } = await supabase
-        .from('log_comments')
-        .select('id, user_id, parent_comment_id, body, created_at')
-        .eq('log_id', logId!)
-        .order('created_at', { ascending: true })
+      const { data: commentRows, error: commentsError } = commentsRes
       if (commentsError) throw commentsError
 
       const rows = commentRows ?? []
       const commenterIds = [...new Set(rows.map((c) => c.user_id))]
-      const { data: commenters, error: commentersError } =
+      // Commenters and comment hearts both depend only on the comments — fetch together.
+      const [{ data: commenters, error: commentersError }, commentLikesRes] = await Promise.all([
         commenterIds.length > 0
-          ? await supabase.from('users').select('id, name, username, photo_url').in('id', commenterIds)
-          : { data: [] as CommentAuthor[], error: null }
+          ? supabase.from('users').select('id, name, username, photo_url').in('id', commenterIds)
+          : Promise.resolve({ data: [] as CommentAuthor[], error: null }),
+        rows.length > 0
+          ? supabase.from('comment_likes').select('comment_id, user_id').in('comment_id', rows.map((c) => c.id))
+          : Promise.resolve(null),
+      ])
       if (commentersError) throw commentersError
 
       const commentersById = new Map((commenters ?? []).map((u) => [u.id, u]))
@@ -104,11 +105,8 @@ export function useMealDetail(logId: string | undefined) {
       // request 404s (PGRST205 / 42P01) — treat that as "feature not
       // deployed" and let the UI hide the hearts rather than erroring.
       let commentLikes: CommentLikes | null = null
-      if (rows.length > 0) {
-        const { data: likeRows, error: clError } = await supabase
-          .from('comment_likes')
-          .select('comment_id, user_id')
-          .in('comment_id', rows.map((c) => c.id))
+      if (commentLikesRes) {
+        const { data: likeRows, error: clError } = commentLikesRes
         if (!clError) {
           const counts = new Map<string, number>()
           const mine = new Set<string>()

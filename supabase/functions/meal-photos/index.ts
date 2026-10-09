@@ -233,13 +233,13 @@ Deno.serve(async (req: Request) => {
       return json(action === 'migrate' ? await migrate(cursor) : await purge(cursor))
     }
 
-    // Everything else acts as the signed-in user (token verified by Supabase Auth).
+    // Everything else acts as the signed-in user.
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
     })
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return json({ error: 'Unauthorized' }, 401)
 
+    // Signing needs no separate login lookup: the logs query below runs with
+    // the caller's token, so the database itself checks it and applies RLS.
     if (action === 'sign') {
       const paths = stringList(body.paths, 60).filter((p) => p.startsWith(R2_PREFIX))
       if (paths.length === 0) return json({ urls: {} })
@@ -252,6 +252,10 @@ Deno.serve(async (req: Request) => {
       }
       return json({ urls })
     }
+
+    // Uploads and deletes act on the caller's own folder, so they need to know who that is.
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return json({ error: 'Unauthorized' }, 401)
 
     if (action === 'upload') {
       const key = String(form?.get('path') ?? '')

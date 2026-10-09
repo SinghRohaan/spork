@@ -5,7 +5,8 @@ import App from './App'
 
 describe('home routes', () => {
   it('renders Feed at the /home/feed route inside HomeShell', () => {
-    const routes = App().props.children.props.children
+    // App → page wrapper → Suspense (screens load lazily) → Routes
+    const routes = App().props.children.props.children.props.children
     const home = Children.toArray(routes).find(
       route => isValidElement<{ path?: string }>(route) && route.props.path === '/home'
     )

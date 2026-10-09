@@ -24,20 +24,20 @@ export function useMyPosts(limit = 100) {
       if (error) throw error
       if (!logs || logs.length === 0) return []
 
-      const { data: author } = await supabase
-        .from('users')
-        .select('id, name, username, photo_url, streak_count, streak_last_log_date, calorie_goal, protein_goal')
-        .eq('id', userId!)
-        .maybeSingle()
+      const photoPaths = logs.filter((l) => l.photo_url).map((l) => l.photo_url as string)
+      const logIds = logs.map((l) => l.id)
+      const [{ data: author }, signedUrlByPath, { data: likeRows }, { data: commentRows }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, name, username, photo_url, streak_count, streak_last_log_date, calorie_goal, protein_goal')
+          .eq('id', userId!)
+          .maybeSingle(),
+        signMealPhotos(photoPaths),
+        supabase.from('log_likes').select('log_id, user_id').in('log_id', logIds),
+        supabase.from('log_comments').select('log_id').in('log_id', logIds),
+      ])
 
       if (!author) return []
-
-      const photoPaths = logs.filter((l) => l.photo_url).map((l) => l.photo_url as string)
-      const signedUrlByPath = await signMealPhotos(photoPaths)
-
-      const logIds = logs.map((l) => l.id)
-      const { data: likeRows }    = await supabase.from('log_likes').select('log_id, user_id').in('log_id', logIds)
-      const { data: commentRows } = await supabase.from('log_comments').select('log_id').in('log_id', logIds)
 
       const likesByLog = new Map<string, { count: number; likedByViewer: boolean; likerIds: string[] }>()
       for (const like of likeRows ?? []) {

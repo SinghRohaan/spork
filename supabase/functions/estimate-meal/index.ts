@@ -19,6 +19,34 @@ const GEMINI_FALLBACK_MODELS = (Deno.env.get('GEMINI_FALLBACK_MODELS') || 'gemin
 const GEMINI_MODELS = [...new Set([GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS])]
 const geminiUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+/** AI estimates per person per day (migration 0019's consume_ai_quota). */
+const DAILY_ESTIMATE_LIMIT = 60
+/** ~6 MB of photo; the app sends ~150–300 KB. */
+const MAX_PHOTO_BASE64_LENGTH = 8_000_000
+
+/**
+ * Asks the database, with the caller's own login token, to count this
+ * estimate. That both proves the token is genuine (the database checks its
+ * signature) and enforces the daily limit. 'allowed' if the quota function
+ * isn't deployed yet, so estimates keep working before the migration runs.
+ */
+async function checkQuota(jwt: string): Promise<'allowed' | 'limit' | 'unauthorized'> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/consume_ai_quota`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_limit: DAILY_ESTIMATE_LIMIT }),
+    })
+    if (res.status === 401 || res.status === 403) return 'unauthorized'
+    if (!res.ok) return 'allowed' // function not deployed yet, or a database hiccup — don't block logging
+    return (await res.json()) === false ? 'limit' : 'allowed'
+  } catch {
+    return 'allowed'
+  }
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -317,12 +345,19 @@ Deno.serve(async (req: Request) => {
   } catch {
     claims = null
   }
-  if (!claims || claims.role !== 'authenticated' || !claims.sub) {
+  if (!jwt || !claims || claims.role !== 'authenticated' || !claims.sub) {
     return jsonResponse({ error: 'Unauthorized' }, 401)
   }
 
   try {
     const body: EstimateMealRequestBody = await req.json()
+    if (typeof body.photoBase64 === 'string' && body.photoBase64.length > MAX_PHOTO_BASE64_LENGTH) {
+      return jsonResponse({ error: 'Photo too large' }, 413)
+    }
+
+    const quota = await checkQuota(jwt)
+    if (quota === 'unauthorized') return jsonResponse({ error: 'Unauthorized' }, 401)
+    if (quota === 'limit') return jsonResponse({ error: 'Daily estimate limit reached — try again tomorrow' }, 429)
 
     const mode = body.mode === 'packaged' ? 'packaged' : body.mode === 'text' ? 'text' : 'meal'
     if (mode === 'text' ? !body.description?.trim() : !body.photoBase64) {

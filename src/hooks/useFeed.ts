@@ -51,21 +51,24 @@ export function useFeed() {
       if (!logs || logs.length === 0) return []
 
       const authorIds = [...new Set(logs.map((log) => log.user_id))]
-      const { data: authors, error: authorsError } = await supabase
-        .from('users')
-        .select('id, name, username, photo_url, streak_count, streak_last_log_date, calorie_goal, protein_goal')
-        .in('id', authorIds)
+      const photoPaths = logs.filter((log) => log.photo_url).map((log) => log.photo_url as string)
+      const logIds = logs.map((log) => log.id)
+
+      // Everything else depends only on the posts, so fetch it all at once
+      // rather than one request after another.
+      const [{ data: authors, error: authorsError }, signedUrlByPath, { data: likeRows }, { data: commentRows }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, name, username, photo_url, streak_count, streak_last_log_date, calorie_goal, protein_goal')
+          .in('id', authorIds),
+        signMealPhotos(photoPaths),
+        supabase.from('log_likes').select('log_id, user_id').in('log_id', logIds),
+        supabase.from('log_comments').select('log_id').in('log_id', logIds),
+      ])
 
       if (authorsError) throw authorsError
 
       const authorsById = new Map((authors ?? []).map((author) => [author.id, author]))
-
-      const photoPaths = logs.filter((log) => log.photo_url).map((log) => log.photo_url as string)
-      const signedUrlByPath = await signMealPhotos(photoPaths)
-
-      const logIds = logs.map((log) => log.id)
-      const { data: likeRows } = await supabase.from('log_likes').select('log_id, user_id').in('log_id', logIds)
-      const { data: commentRows } = await supabase.from('log_comments').select('log_id').in('log_id', logIds)
 
       const likesByLog = new Map<string, { count: number; likedByViewer: boolean; likerIds: string[] }>()
       for (const like of likeRows ?? []) {

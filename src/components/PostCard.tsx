@@ -156,7 +156,7 @@ export function PostCard({ item, index = 0, viewerId, optimisticLiked, likeAnima
           <>
             <div className="post-slides" onScroll={(e) => setSlide(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}>
               <div className="post-slide photo-slide">
-                <FeedImage src={photoSignedUrl} alt={log.name ?? 'Meal photo'} className="photo" onClick={() => setShowPhoto(true)} />
+                <FeedImage src={photoSignedUrl} alt={log.name ?? 'Meal photo'} className="photo" onClick={() => setShowPhoto(true)} priority={index < 2} />
                 <span className="slide-count">1/2</span>
               </div>
               <div className="post-slide">

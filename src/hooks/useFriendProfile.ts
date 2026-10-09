@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { signMealPhotos } from '../lib/mealPhotos'
 import { useSession } from './useSession'
+import { PUBLIC_USER_COLUMNS, type PublicUser } from './useCurrentUser'
 import type { Database } from '../lib/database.types'
 
-type UserRow = Database['public']['Tables']['users']['Row']
+type UserRow = PublicUser
 type LogRow = Database['public']['Tables']['logs']['Row']
 
 export interface FriendProfileLog extends LogRow {
@@ -38,7 +39,7 @@ export function useFriendProfile(username: string | undefined) {
     queryFn: async (): Promise<FriendProfileData | null> => {
       const { data: user, error: userError } = await supabase
         .from('users')
-        .select('*')
+        .select(PUBLIC_USER_COLUMNS)
         .eq('username', username!)
         .maybeSingle()
 
@@ -55,11 +56,12 @@ export function useFriendProfile(username: string | undefined) {
 
       const rows = logs ?? []
       const photoPaths = rows.filter((log) => log.photo_url).map((log) => log.photo_url as string)
-      const signedUrlByPath = await signMealPhotos(photoPaths)
-
       const logIds = rows.map((log) => log.id)
-      const { data: likeRows } = await supabase.from('log_likes').select('log_id, user_id').in('log_id', logIds)
-      const { data: commentRows } = await supabase.from('log_comments').select('log_id').in('log_id', logIds)
+      const [signedUrlByPath, { data: likeRows }, { data: commentRows }] = await Promise.all([
+        signMealPhotos(photoPaths),
+        supabase.from('log_likes').select('log_id, user_id').in('log_id', logIds),
+        supabase.from('log_comments').select('log_id').in('log_id', logIds),
+      ])
 
       const likesByLog = new Map<string, { count: number; likedByViewer: boolean; likerIds: string[] }>()
       for (const like of likeRows ?? []) {

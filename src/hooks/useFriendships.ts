@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { useSession } from './useSession'
-import type { Database } from '../lib/database.types'
+import { PUBLIC_USER_COLUMNS, type PublicUser } from './useCurrentUser'
 
-type UserRow = Database['public']['Tables']['users']['Row']
+type UserRow = PublicUser
 
 export interface FriendshipsData {
   accepted: UserRow[]
@@ -39,7 +39,7 @@ export function useFriendships() {
       const otherPartyIds = [...new Set(otherPartyIdByFriendshipId.values())]
       const { data: users, error: usersError } =
         otherPartyIds.length > 0
-          ? await supabase.from('users').select('*').in('id', otherPartyIds)
+          ? await supabase.from('users').select(PUBLIC_USER_COLUMNS).in('id', otherPartyIds)
           : { data: [] as UserRow[], error: null }
 
       if (usersError) throw usersError

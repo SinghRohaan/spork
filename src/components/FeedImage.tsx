@@ -6,6 +6,8 @@ interface FeedImageProps {
   className?: string
   style?: React.CSSProperties
   onClick?: () => void
+  /** Near the top of the screen: load straight away, ahead of other images. */
+  priority?: boolean
 }
 
 /**
@@ -13,7 +15,7 @@ interface FeedImageProps {
  * 1. Reserves a 4:3 shimmer box until the image has loaded
  * 2. Then renders the image at natural height (capped by `.photo.natural`)
  */
-export function FeedImage({ src, alt, className = '', style, onClick }: FeedImageProps) {
+export function FeedImage({ src, alt, className = '', style, onClick, priority = false }: FeedImageProps) {
   const [loaded, setLoaded] = useState(false)
 
   return (
@@ -23,7 +25,8 @@ export function FeedImage({ src, alt, className = '', style, onClick }: FeedImag
         src={src}
         alt={alt}
         decoding="async"
-        loading="lazy"
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'auto'}
         className={`${className} natural transition-opacity duration-300 ${loaded ? 'opacity-100' : 'absolute inset-0 opacity-0'}`}
         onLoad={() => setLoaded(true)}
         onClick={onClick}

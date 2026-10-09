@@ -1,47 +1,60 @@
+import { lazy, Suspense, type ComponentType } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Welcome from './screens/onboarding/Welcome'
-import SignIn from './screens/onboarding/SignIn'
-import VerifyCode from './screens/onboarding/VerifyCode'
-import AuthCallback from './screens/auth/AuthCallback'
-import { Privacy, Terms } from './screens/legal/Legal'
-import PublicPost from './screens/public/PublicPost'
-// Pre-auth onboarding (no session required)
-import Basics from './screens/onboarding/Basics'
-import Goal from './screens/onboarding/Goal'
-import Activity from './screens/onboarding/Activity'
-import FoodLifestyle from './screens/onboarding/FoodLifestyle'
-import Experience from './screens/onboarding/Experience'
-import YourPlan from './screens/onboarding/YourPlan'
-import CreateAccount from './screens/onboarding/CreateAccount'
-// Post-auth onboarding (session required)
-import ProfileSetup from './screens/onboarding/ProfileSetup'
-import AddFirstFriends from './screens/onboarding/AddFirstFriends'
-// App
 import Feed from './screens/feed/Feed'
-import InsightsScreen from './screens/insights/Insights'
-import DayReview from './screens/insights/DayReview'
-import NewChallenge from './screens/challenges/NewChallenge'
-import ChallengeDetail from './screens/challenges/ChallengeDetail'
-import LogFlow from './screens/log/LogFlow'
-import MealDetail from './screens/log/MealDetail'
-import EditPost from './screens/log/EditPost'
-import Connections from './screens/friends/Connections'
-import StreaksRewards from './screens/rewards/StreaksRewards'
-import Badges from './screens/badges/Badges'
-import ProfileScreen from './screens/profile/ProfileScreen'
-import SettingsScreen from './screens/profile/SettingsScreen'
-import Friends from './screens/friends/Friends'
-import FriendProfile from './screens/friends/FriendProfile'
-import NotificationsInbox from './screens/notifications/NotificationsInbox'
 import { HomeShell } from './screens/home/HomeShell'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { RequireOnboarded } from './components/RequireOnboarded'
 import { RequireNotOnboarded } from './components/RequireNotOnboarded'
 import { RootRedirect } from './components/RootRedirect'
 
+// Screens load on first visit (keeps the first screen fast), and all of them
+// are fetched in the background once the app is idle, so taps never wait.
+const preloads: (() => Promise<unknown>)[] = []
+function screen(load: () => Promise<{ default: ComponentType }>) {
+  preloads.push(load)
+  return lazy(load)
+}
+const SignIn = screen(() => import('./screens/onboarding/SignIn'))
+const VerifyCode = screen(() => import('./screens/onboarding/VerifyCode'))
+const AuthCallback = screen(() => import('./screens/auth/AuthCallback'))
+const Privacy = screen(() => import('./screens/legal/Legal').then((m) => ({ default: m.Privacy })))
+const Terms = screen(() => import('./screens/legal/Legal').then((m) => ({ default: m.Terms })))
+const PublicPost = screen(() => import('./screens/public/PublicPost'))
+const Basics = screen(() => import('./screens/onboarding/Basics'))
+const Goal = screen(() => import('./screens/onboarding/Goal'))
+const Activity = screen(() => import('./screens/onboarding/Activity'))
+const FoodLifestyle = screen(() => import('./screens/onboarding/FoodLifestyle'))
+const Experience = screen(() => import('./screens/onboarding/Experience'))
+const YourPlan = screen(() => import('./screens/onboarding/YourPlan'))
+const CreateAccount = screen(() => import('./screens/onboarding/CreateAccount'))
+const ProfileSetup = screen(() => import('./screens/onboarding/ProfileSetup'))
+const AddFirstFriends = screen(() => import('./screens/onboarding/AddFirstFriends'))
+const InsightsScreen = screen(() => import('./screens/insights/Insights'))
+const DayReview = screen(() => import('./screens/insights/DayReview'))
+const NewChallenge = screen(() => import('./screens/challenges/NewChallenge'))
+const ChallengeDetail = screen(() => import('./screens/challenges/ChallengeDetail'))
+const LogFlow = screen(() => import('./screens/log/LogFlow'))
+const MealDetail = screen(() => import('./screens/log/MealDetail'))
+const EditPost = screen(() => import('./screens/log/EditPost'))
+const Connections = screen(() => import('./screens/friends/Connections'))
+const StreaksRewards = screen(() => import('./screens/rewards/StreaksRewards'))
+const Badges = screen(() => import('./screens/badges/Badges'))
+const ProfileScreen = screen(() => import('./screens/profile/ProfileScreen'))
+const SettingsScreen = screen(() => import('./screens/profile/SettingsScreen'))
+const Friends = screen(() => import('./screens/friends/Friends'))
+const FriendProfile = screen(() => import('./screens/friends/FriendProfile'))
+const NotificationsInbox = screen(() => import('./screens/notifications/NotificationsInbox'))
+
+if (typeof window !== 'undefined') {
+  const idle = window.requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1500))
+  idle(() => preloads.forEach((load) => load().catch(() => null)))
+}
+
 export default function App() {
   return (
     <div className="mx-auto min-h-screen max-w-[430px] bg-background">
+      <Suspense fallback={null}>
       <Routes>
         {/* ── Root — smart redirect based on auth state ─────────────
             Returning signed-in users land here and go straight to feed.
@@ -103,6 +116,7 @@ export default function App() {
         {/* ── Fallback — same smart redirect as root ───────────────── */}
         <Route path="*" element={<RootRedirect />} />
       </Routes>
+      </Suspense>
     </div>
   )
 }
