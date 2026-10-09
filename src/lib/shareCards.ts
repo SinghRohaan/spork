@@ -250,3 +250,89 @@ export function mealCards(d: MealShareData) {
     { label: 'Sticker', render: () => stickerCard(d), transparent: true },
   ].filter((c) => !c.skip)
 }
+
+// ── Day review cards ──────────────────────────────────────────────────────────
+
+export interface DayShareData {
+  username: string
+  date: Date
+  score: number
+  tone: 'good' | 'mid' | 'low'
+  label: string
+  calories: number
+  calorieGoal: number
+  protein: number
+  proteinGoal: number
+  meals: { name: string; calories: number }[]
+}
+
+const TONE = { good: TEAL, mid: MACRO.carbs, low: '#ff6b5e' }
+const dayLabel = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+
+/** A · the day's score ring with calories, protein and meals. */
+export function dayScoreCard(d: DayShareData): Promise<Blob> {
+  return drawCard((ctx) => {
+    const cx = CARD / 2
+    text(ctx, dayLabel(d.date), cx, 40, 12, { weight: 400, color: QUIET, align: 'center' })
+    text(ctx, d.label, cx, 70, 24, { weight: 500, display: true, align: 'center', maxW: CARD - 40 })
+    ring(ctx, cx, 158, 58, 13, [{ frac: d.score / 100, color: TONE[d.tone] }])
+    text(ctx, `${d.score}`, cx, 171, 38, { weight: 500, display: true, align: 'center' })
+    const stats: [string, string][] = [
+      [Math.round(d.calories).toLocaleString(), `of ${d.calorieGoal.toLocaleString()} kcal`],
+      [`${Math.round(d.protein)} g`, d.protein >= d.proteinGoal * 0.9 ? 'protein ✓' : `of ${d.proteinGoal} g protein`],
+      [`${d.meals.length}`, d.meals.length === 1 ? 'meal' : 'meals'],
+    ]
+    const colW = (CARD - 40) / 3
+    stats.forEach(([value, label], i) => {
+      const x = 20 + colW * i + colW / 2
+      text(ctx, value, x, 266, 20, { align: 'center' })
+      text(ctx, label, x, 285, 11, { weight: 400, color: QUIET, align: 'center' })
+    })
+    footer(ctx, d.username)
+  })
+}
+
+/** B · what was eaten that day, with calories. */
+export function dayMealsCard(d: DayShareData): Promise<Blob> {
+  return drawCard((ctx) => {
+    text(ctx, 'What I ate', 22, 46, 24, { weight: 500, display: true })
+    text(ctx, `${dayLabel(d.date)} · day score ${d.score}`, 22, 68, 12, { weight: 400, color: QUIET })
+    const shown = d.meals.slice(0, 6)
+    shown.forEach((m, i) => {
+      const y = 108 + i * 34
+      text(ctx, m.name, 22, y, 15, { weight: 400, maxW: CARD - 110 })
+      text(ctx, `${Math.round(m.calories)} kcal`, CARD - 22, y, 13, { weight: 400, color: QUIET, align: 'right' })
+    })
+    const y = 108 + shown.length * 34 + 4
+    if (d.meals.length > shown.length) text(ctx, `…and ${d.meals.length - shown.length} more`, 22, y - 10, 12, { weight: 400, color: QUIET })
+    ctx.fillStyle = 'rgba(244,244,243,0.15)'
+    ctx.fillRect(22, y, CARD - 44, 1)
+    text(ctx, 'Total', 22, y + 26, 15)
+    text(ctx, `${Math.round(d.calories).toLocaleString()} kcal`, CARD - 22, y + 26, 15, { color: TONE[d.tone], align: 'right' })
+    footer(ctx, d.username)
+  })
+}
+
+/** C · see-through sticker: score ring and label only. */
+export function dayStickerCard(d: DayShareData): Promise<Blob> {
+  return drawCard((ctx) => {
+    const cx = CARD / 2
+    ctx.shadowColor = 'rgba(0,0,0,0.35)'
+    ctx.shadowBlur = 6
+    ring(ctx, cx, 140, 64, 14, [{ frac: d.score / 100, color: TONE[d.tone] }], 'rgba(255,255,255,0.25)')
+    text(ctx, `${d.score}`, cx, 154, 42, { weight: 500, display: true, align: 'center' })
+    text(ctx, d.label, cx, 250, 24, { weight: 500, display: true, align: 'center' })
+    ctx.font = font(16, 500, true)
+    const w = ctx.measureText('spork').width + 20
+    brand(ctx, cx - w / 2, 296)
+    text(ctx, `@${d.username}`, cx, 318, 12, { weight: 400, align: 'center' })
+  }, true)
+}
+
+export function dayCards(d: DayShareData) {
+  return [
+    { label: 'Day score', render: () => dayScoreCard(d) },
+    { label: 'What I ate', render: () => dayMealsCard(d) },
+    { label: 'Sticker', render: () => dayStickerCard(d), transparent: true },
+  ]
+}

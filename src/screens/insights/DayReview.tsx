@@ -5,6 +5,9 @@ import { Skeleton } from '../../components/Skeleton'
 import { Reasons, ScoreRing } from '../../components/Accountability'
 import { useWeekMeals } from '../../hooks/useAccountability'
 import { dayReview, weekStart, weekSummary, type Tone } from '../../lib/accountability'
+import { ShareSheet } from '../../components/ShareModal'
+import { useCurrentUser } from '../../hooks/useCurrentUser'
+import { dayCards } from '../../lib/shareCards'
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const MACRO_COLOR = { calories: 'var(--color-ink)', protein: 'var(--macro-protein)', carbs: 'var(--macro-carbs)', fat: 'var(--macro-fat)' }
@@ -18,6 +21,8 @@ export default function DayReview() {
   const navigate = useNavigate()
   const todayIndex = 6
   const [dayIndex, setDayIndex] = useState(todayIndex)
+  const [sharing, setSharing] = useState(false)
+  const { data: user } = useCurrentUser()
   const { data, goals, isError, refetch } = useWeekMeals({ withPhotos: true })
 
   if (isError) {
@@ -40,10 +45,32 @@ export default function DayReview() {
   const dates = Array.from({ length: 7 }, (_, i) => { const d = weekStart(); d.setDate(d.getDate() + i); return d })
   const week = weekSummary(data.days, goals)
   const review = dayReview(data.days[dayIndex], goals, dayIndex === todayIndex)
+  const eaten = (key: 'calories' | 'protein') => review.rows.find((r) => r.key === key)!.eaten
 
   return (
     <div>
-      <TopBar title="Day review" back="/home/insights" />
+      <TopBar title="Day review" back="/home/insights"
+        right={review.score != null && user ? <button type="button" className="circle" aria-label="Share this day" onClick={() => setSharing(true)}>↗</button> : undefined} />
+      {sharing && review.score != null && user && (
+        <ShareSheet
+          cards={dayCards({
+            username: user.username,
+            date: dates[dayIndex],
+            score: review.score,
+            tone: review.tone,
+            label: review.label,
+            calories: eaten('calories'),
+            calorieGoal: goals.calories,
+            protein: eaten('protein'),
+            proteinGoal: goals.protein,
+            meals: review.meals.map((m) => ({ name: m.name || m.meal_type.charAt(0).toUpperCase() + m.meal_type.slice(1), calories: m.calories })),
+          })}
+          fileName={`spork-${user.username}-day`}
+          message={`My day on Spork: ${review.score}/100 · ${review.label}`}
+          note={<>tag <b>@sporkapp</b></>}
+          onClose={() => setSharing(false)}
+        />
+      )}
 
       {/* ── Day picker (this week) ─────────────────────────── */}
       <div className="day-pick" role="group" aria-label="Day">
