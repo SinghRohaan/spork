@@ -12,6 +12,7 @@ import { ShareModal } from './ShareModal'
 import { LikersSheet } from './LikersSheet'
 import { FeedImage } from './FeedImage'
 import { MealBreakdown } from './MealBreakdown'
+import { postedItems } from '../lib/mealItems'
 import { PhotoViewer } from './PhotoViewer'
 import { Avatar } from './Avatar'
 import { useToast } from './Toast'
@@ -212,12 +213,17 @@ export function PostCard({ item, index = 0, viewerId, optimisticLiked, likeAnima
       {/* ── Share modal ── */}
       {showShare && (
         <ShareModal
-          photoUrl={photoSignedUrl}
-          username={author.username}
-          calories={calories}
-          proteinG={proteinG}
-          streak={effectiveStreak}
-          mealName={log.name}
+          meal={{
+            photoUrl: photoSignedUrl,
+            username: author.username,
+            mealName: log.name,
+            mealType: log.meal_type,
+            calories,
+            proteinG,
+            carbsG: log.carbs_final_g ?? log.carbs_estimate_g,
+            fatG: log.fat_final_g ?? log.fat_estimate_g,
+            items: postedItems(log),
+          }}
           shareLogId={isOwnPost ? log.id : undefined}
           isPrivate={log.visibility === 'private'}
           onClose={() => setShowShare(false)}

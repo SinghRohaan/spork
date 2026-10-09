@@ -16,6 +16,8 @@ import { computeNextStreak, getEffectiveStreak } from '../../lib/streak'
 import { hapticSuccess, hapticCelebration, hapticError } from '../../lib/haptics'
 import { startLogAgain, type PastMeal } from '../../lib/logAgain'
 import { itemsForPost } from '../../lib/mealItems'
+import type { MealShareData } from '../../lib/shareCards'
+import { ShareModal } from '../../components/ShareModal'
 import { useUsualMeals } from '../../hooks/useUsualMeals'
 
 type Step = 'capture' | 'scan' | 'loading' | 'edit' | 'not-food' | 'celebration'
@@ -28,6 +30,9 @@ interface CelebrationData {
   remaining: number
   calorieGoal: number
   mealName: string
+  /** What the share sheet draws — the photo is a local copy of the one just posted. */
+  share: MealShareData
+  isPrivate: boolean
 }
 
 export default function LogFlow() {
@@ -157,6 +162,7 @@ export default function LogFlow() {
 
     try {
       const draft = useLogDraftStore.getState()
+      const items = itemsForPost(draft.items, draft.portionMultiplier)
       const logId = await postLog({
         userId: session.user.id,
         photoFile,
@@ -171,7 +177,7 @@ export default function LogFlow() {
         finalProteinG: draft.proteinG,
         finalCarbsG: draft.carbsG,
         finalFatG: draft.fatG,
-        items: itemsForPost(draft.items, draft.portionMultiplier),
+        items,
         currentStreakCount: user.streak_count,
         currentStreakLastLogDate: user.streak_last_log_date,
       })
@@ -204,6 +210,18 @@ export default function LogFlow() {
         remaining,
         calorieGoal,
         mealName: draft.mealName,
+        share: {
+          photoUrl: photoFile ? URL.createObjectURL(photoFile) : null,
+          username: user.username,
+          mealName: draft.mealName || null,
+          mealType: draft.mealType,
+          calories: draft.calories,
+          proteinG: draft.proteinG,
+          carbsG: draft.carbsG,
+          fatG: draft.fatG,
+          items: items ?? [],
+        },
+        isPrivate: draft.visibility === 'private',
       })
       reset()
       setStep('celebration')
@@ -312,6 +330,9 @@ function CelebrationScreen({ data, onViewPost, onDone }: {
   onViewPost: () => void
   onDone: () => void
 }) {
+  const [showShare, setShowShare] = useState(false)
+  // The local photo copy is only needed while this screen is up.
+  useEffect(() => () => { if (data.share.photoUrl) URL.revokeObjectURL(data.share.photoUrl) }, [data.share.photoUrl])
   const pct = data.calorieGoal > 0 ? Math.min(Math.round(((data.calorieGoal - data.remaining) / data.calorieGoal) * 100), 100) : 0
   const isStreakMilestone = [7, 30, 100].includes(data.newStreakCount)
 
@@ -355,8 +376,12 @@ function CelebrationScreen({ data, onViewPost, onDone }: {
       </div>
 
       {/* Actions */}
-      <button type="button" onClick={onViewPost} className="btn light">View post</button>
-      <button type="button" onClick={onDone} className="btn">Back to feed</button>
+      <button type="button" onClick={() => setShowShare(true)} className="btn">↗ Share your meal</button>
+      <div className="flex gap-2.5">
+        <button type="button" onClick={onViewPost} className="btn light flex-1">View post</button>
+        <button type="button" onClick={onDone} className="btn light flex-1">Back to feed</button>
+      </div>
+      {showShare && <ShareModal meal={data.share} shareLogId={data.logId} isPrivate={data.isPrivate} onClose={() => setShowShare(false)} />}
     </div>
   )
 }
