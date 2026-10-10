@@ -24,8 +24,8 @@ export function MealBreakdown({ log, author, onMore }: Pick<FeedItem, 'log' | 'a
     carbs: log.carbs_final_g ?? log.carbs_estimate_g ?? 0,
     fat: log.fat_final_g ?? log.fat_estimate_g ?? 0,
   }
-  const score = mealScore(meal, dailyGoals(author.calorie_goal, author.protein_goal))
   const items = postedItems(log)
+  const score = mealScore({ ...meal, items }, dailyGoals(author.calorie_goal, author.protein_goal))
   const extra = items.length - MAX_ITEMS
 
   return (
@@ -34,7 +34,7 @@ export function MealBreakdown({ log, author, onMore }: Pick<FeedItem, 'log' | 'a
         <ScoreRing score={score.score} tone={score.tone} max={10} size={70} stroke={7} />
         <span className="min-w-0">
           <span className="caps">Meal score</span>
-          <b className="block truncate font-display" style={{ fontSize: 19, fontWeight: 500, marginTop: 2 }}>{score.headline}</b>
+          <b className="block font-display" style={{ fontSize: 19, fontWeight: 500, marginTop: 2, lineHeight: 1.2 }}>{score.headline}</b>
           <small className="muted block">
             {Math.round(meal.calories).toLocaleString()} kcal{items.length ? ` · ${items.length} item${items.length === 1 ? '' : 's'}` : ''}
           </small>

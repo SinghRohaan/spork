@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ParsedEstimate, ParsedEstimateItem } from '../lib/parseEstimate'
+import { scaleDetail } from '../lib/mealItems'
 import { generateMealName } from '../lib/generateMealName'
 
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -30,6 +31,18 @@ function defaultMealNameFromRaw(raw: unknown, mealType: MealType): string {
 
 /** An item on the review screen: the AI's guess, possibly corrected by the user. */
 export type DraftItem = ParsedEstimateItem & { edited?: boolean }
+
+/**
+ * An item after the user's edit. Same food, new amount → its fibre / sugar /
+ * alcohol scale with the calories. Renamed → the AI's detail no longer applies.
+ */
+function editedItem(item: DraftItem, patch: Partial<DraftItem>): DraftItem {
+  const next = { ...item, ...patch, edited: true }
+  if (patch.name != null && patch.name.trim().toLowerCase() !== item.name.trim().toLowerCase()) {
+    return { ...next, fiber_g: null, added_sugar_g: null, sat_fat_g: null, alcohol_g: null, group: null, fried: null }
+  }
+  return item.calories > 0 && next.calories !== item.calories ? scaleDetail(next, next.calories / item.calories) : next
+}
 
 function sumItems(items: DraftItem[]) {
   return items.reduce(
@@ -170,7 +183,7 @@ export const useLogDraftStore = create<LogDraftState>((set, get) => ({
   updateItem: (index, patch) => {
     const { items, estimate, portionMultiplier } = get()
     if (!items[index]) return
-    const next = items.map((item, i) => (i === index ? { ...item, ...patch, edited: true } : item))
+    const next = items.map((item, i) => (i === index ? editedItem(item, patch) : item))
     set({ items: next, ...scaledTotals(next, estimate, portionMultiplier) })
   },
 

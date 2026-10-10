@@ -81,10 +81,11 @@ export function MealScoreCard({ meal, goals }: { meal: ScoredMeal; goals: Goals 
           <span className="caps">Meal score</span>
           <h4 style={{ marginTop: 3 }}>{s.headline}</h4>
         </div>
-        <span className="font-display" style={{ fontSize: 34, lineHeight: 1, color: 'var(--tone)' }}>{s.score}<small className="muted" style={{ font: '13px var(--font-sans)' }}> /10</small></span>
+        <span className="font-display" style={{ fontSize: 34, lineHeight: 1, color: 'var(--tone)' }}>{s.score ?? '—'}<small className="muted" style={{ font: '13px var(--font-sans)' }}> /10</small></span>
       </div>
-      <div className="score-bar" aria-hidden="true">{Array.from({ length: 10 }, (_, i) => <span key={i} className={i < s.score ? 'on' : ''} />)}</div>
+      <div className="score-bar" aria-hidden="true">{Array.from({ length: 10 }, (_, i) => <span key={i} className={i < (s.score ?? 0) ? 'on' : ''} />)}</div>
       <div style={{ marginTop: 8 }}><Reasons items={s.reasons} /></div>
+      {s.basic && <p className="tiny muted" style={{ marginTop: 6 }}>Basic score — fibre and sugar weren’t tracked when this was logged.</p>}
       <p className="tiny muted" style={{ marginTop: 6 }}>Only you can see your scores.</p>
     </div>
   )

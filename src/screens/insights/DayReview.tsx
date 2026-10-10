@@ -131,7 +131,7 @@ export default function DayReview() {
                 <b className="block truncate font-semibold">{meal.name || meal.meal_type}</b>
                 <small className="muted block">{meal.meal_type.charAt(0).toUpperCase() + meal.meal_type.slice(1)} · {time(meal.created_at)} · {fmt(meal.calories)} kcal · {Math.round(meal.protein)} g P</small>
               </span>
-              <span className={`score-chip tone-${meal.tone}`}>{meal.score}/10</span>
+              <span className={`score-chip tone-${meal.tone}`}>{meal.score ?? '—'}/10</span>
             </button>
           )
         })}

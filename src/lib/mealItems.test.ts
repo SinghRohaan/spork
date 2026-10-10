@@ -39,6 +39,9 @@ describe('itemsForPost', () => {
 describe('foodEmoji', () => {
   it('matches common foods', () => {
     expect(foodEmoji('Chicken curry')).toBe('🍗')
+    expect(foodEmoji('Grey Goose Vodka')).toBe('🍸')
+    expect(foodEmoji('Kingfisher beer')).toBe('🍺')
+    expect(foodEmoji('Rumali roti')).toBe('🫓')
     expect(foodEmoji('Steamed rice')).toBe('🍚')
     expect(foodEmoji('Curd')).toBe('🥣')
     expect(foodEmoji('Mystery')).toBe('🍽️')

@@ -62,6 +62,19 @@ const FOOD_CHECK = `FIRST — IS THIS SOMETHING PEOPLE EAT OR DRINK?
 
 `
 
+// Per-item detail for the meal score (fibre, sugar, fat quality, alcohol,
+// food group). Shared by all three prompts.
+const NUTRITION_DETAIL = `NUTRITION DETAIL — for EVERY item also give:
+- "fiber_g": dietary fibre in grams for the amount eaten.
+- "added_sugar_g": FREE/ADDED sugar only — table sugar, jaggery, honey, syrups, sweets, sugary drinks, fruit juice. Natural sugar in whole fruit, vegetables or plain milk/curd is 0.
+- "sat_fat_g": saturated fat in grams (ghee, butter, cream, cheese, coconut oil, fatty meat, palm oil in fried snacks and biscuits).
+- "alcohol_g": grams of pure alcohol = ml × ABV × 0.789 (e.g. 30 ml peg of 40% spirit ≈ 9.5 g; 330 ml beer at 5% ≈ 13 g; 375 ml of vodka ≈ 118 g). 0 for anything non-alcoholic.
+- "group": the item's main food group — one of "vegetable", "fruit", "pulse" (dal, chana, rajma, sprouts, soy), "whole_grain" (roti, brown rice, oats, millets), "refined_grain" (white rice, maida, white bread, pasta), "dairy", "egg", "meat", "fish", "nuts_seeds", "fat_oil", "sweet" (mithai, desserts, chocolate, biscuits), "fried_snack" (samosa, pakora, chips, fries), "sugary_drink", "alcohol", "protein_supplement", "other". For a mixed dish use the ingredient giving most of its calories (chicken biryani → "refined_grain"; palak paneer → "dairy"; aloo gobi → "vegetable").
+- "fried": true if deep-fried or cooked in a lot of oil (puri, bhatura, pakora, fried chicken, fries), else false.
+Alcohol is 7 kcal per gram and is NOT protein, carbs or fat: calories ≈ 4×protein + 4×carbs + 9×fat + 7×alcohol.
+
+`
+
 const PROMPT = `You are a registered-dietitian-level nutrition estimator specialising in Indian and South Asian home food, with broad knowledge of global cuisine. You are looking at a photo of one meal.
 
 Work in two passes.
@@ -81,7 +94,7 @@ PASS 2 — QUANTIFY, then compute nutrition
 - "grams" is the COOKED / as-served weight in grams (use ml ≈ g for liquids and gravies).
 - "quantity" is a short human description a user can verify at a glance, always including a household measure: "1 cup cooked", "2 eggs (4 halves)", "1 katori (~150 ml)", "2 medium rotis".
 - Use home-cooked values with typical oil/ghee (~1 tsp oil per curry/sabzi serving, ~½ tsp ghee per roti if it looks glossy). Restaurant food runs 2–3× the fat — only assume that if the photo clearly looks like restaurant/takeaway food.
-- Macros must be consistent: calories ≈ 4×protein + 4×carbs + 9×fat (within ~10%).
+- Macros must be consistent: calories ≈ 4×protein + 4×carbs + 9×fat + 7×alcohol (within ~10%).
 
 USER TEXT ALWAYS WINS
 - If the user's description gives items or quantities ("2 rotis", "200 g chicken", "it's prawn curry"), use them exactly and only estimate what they left out.
@@ -93,10 +106,10 @@ CONFIDENCE
 ASSUMPTIONS
 - Add 1–3 short notes about the biggest assumptions you made that the user may want to correct (e.g. "Assumed curry is soy chunks — tap to change if it's prawn", "Assumed 1 tsp oil in the sabzi"). Keep each under 90 characters.
 
-Return ONLY JSON of this shape:
+${NUTRITION_DETAIL}Return ONLY JSON of this shape:
 {
   "is_food": boolean, "not_food_reason": string,
-  "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high" }],
+  "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "added_sugar_g": number, "sat_fat_g": number, "alcohol_g": number, "group": string, "fried": boolean, "confidence": "low"|"medium"|"high" }],
   "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number,
   "confidence": "low"|"medium"|"high",
   "assumptions": [string]
@@ -112,6 +125,7 @@ STEP 1 — NUTRITION TABLE VISIBLE? If a nutrition information / nutrition facts
 - Transcribe it EXACTLY. Never estimate a value that is printed.
 - Indian labels usually print "per 100 g" and often "per serve". Use the PER-SERVE column when present, with its printed serve size; otherwise use per 100 g scaled to one serving (see STEP 3).
 - Energy may be in kcal or kJ (kcal = kJ / 4.184). "Total carbohydrate" is carbs; "Total fat" is fat.
+- Also transcribe dietary fibre, "added sugars" (if only total sugars is printed, use it for sweets, biscuits and drinks; for plain dairy use 0) and saturated fat when printed.
 
 STEP 2 — NO TABLE, BUT THE PRODUCT IS RECOGNISABLE (brand + product name visible, e.g. "Yoga Bar Chocolate Brownie Protein Bar", "Amul Masti Dahi 200 g"):
 - Use that product's published nutrition values. Set confidence "medium".
@@ -126,10 +140,10 @@ STEP 4 — NOTHING READABLE: identify the product type from the pack and estimat
 Return ONE item: name = brand + product ("Yoga Bar Protein Bar – Chocolate Brownie"), quantity = what was eaten in household terms ("1 bar (60 g)", "1 serving (30 g)", "½ pack (50 g)"), grams = weight eaten, and its calories/protein_g/carbs_g/fat_g. Confidence "high" only when numbers were read off a visible table.
 In "assumptions", say where the numbers came from in under 90 characters, e.g. "Read from the label · per serve (60 g)" or "No table visible — used Yoga Bar's published values".
 
-Return ONLY JSON of this shape:
+${NUTRITION_DETAIL}Return ONLY JSON of this shape:
 {
   "is_food": boolean, "not_food_reason": string,
-  "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high" }],
+  "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "added_sugar_g": number, "sat_fat_g": number, "alcohol_g": number, "group": string, "fried": boolean, "confidence": "low"|"medium"|"high" }],
   "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number,
   "confidence": "low"|"medium"|"high",
   "assumptions": [string]
@@ -143,14 +157,14 @@ const TEXT_PROMPT = `You are a registered-dietitian-level nutrition estimator sp
 - Quantities the user states are FACT — use them exactly. For anything unstated, assume one typical Indian home serving (roti ≈ 40 g, 1 katori dal/sabzi ≈ 150 ml, 1 cup cooked rice ≈ 150 g, 1 egg ≈ 50 g) and say so in "assumptions".
 - "grams" is the as-served weight; "quantity" is a short household measure ("2 medium rotis", "1 katori (~150 ml)").
 - Home-cooked values with typical oil/ghee unless the user says restaurant, fried, takeaway, etc.
-- Macros must be consistent: calories ≈ 4×protein + 4×carbs + 9×fat (within ~10%).
+- Macros must be consistent: calories ≈ 4×protein + 4×carbs + 9×fat + 7×alcohol (within ~10%).
 - Per-item confidence: "high" when the user gave the quantity, "medium" when you assumed a typical serving, "low" when the dish itself is vague ("snacks", "some sweets").
 - In "assumptions", list the 1–3 biggest guesses (under 90 characters each).
 
-Return ONLY JSON of this shape:
+${NUTRITION_DETAIL}Return ONLY JSON of this shape:
 {
   "is_food": boolean, "not_food_reason": string,
-  "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "confidence": "low"|"medium"|"high" }],
+  "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "added_sugar_g": number, "sat_fat_g": number, "alcohol_g": number, "group": string, "fried": boolean, "confidence": "low"|"medium"|"high" }],
   "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number,
   "confidence": "low"|"medium"|"high",
   "assumptions": [string]
@@ -176,9 +190,15 @@ const RESPONSE_SCHEMA = {
           protein_g: { type: 'NUMBER' },
           carbs_g: { type: 'NUMBER' },
           fat_g: { type: 'NUMBER' },
+          fiber_g: { type: 'NUMBER' },
+          added_sugar_g: { type: 'NUMBER' },
+          sat_fat_g: { type: 'NUMBER' },
+          alcohol_g: { type: 'NUMBER' },
+          group: { type: 'STRING', enum: ['vegetable', 'fruit', 'pulse', 'whole_grain', 'refined_grain', 'dairy', 'egg', 'meat', 'fish', 'nuts_seeds', 'fat_oil', 'sweet', 'fried_snack', 'sugary_drink', 'alcohol', 'protein_supplement', 'other'] },
+          fried: { type: 'BOOLEAN' },
           confidence: { type: 'STRING', enum: ['low', 'medium', 'high'] },
         },
-        required: ['name', 'quantity', 'grams', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'confidence'],
+        required: ['name', 'quantity', 'grams', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'fiber_g', 'added_sugar_g', 'sat_fat_g', 'alcohol_g', 'group', 'fried', 'confidence'],
       },
     },
     calories: { type: 'NUMBER' },

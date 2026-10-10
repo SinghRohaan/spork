@@ -2,9 +2,9 @@
  * The items shown when you swipe a post: what was in the meal, with each
  * item's calories and macros.
  */
-import { parseEstimateResponse, parseItems, type ParsedEstimateItem } from './parseEstimate'
+import { parseEstimateResponse, parseItems, type ItemDetail, type ParsedEstimateItem } from './parseEstimate'
 
-export interface MealItem {
+export interface MealItem extends ItemDetail {
   name: string
   quantity: string | null
   grams: number | null
@@ -27,8 +27,18 @@ interface LogLike {
   fat_estimate_g?: number | null
 }
 
+const DETAIL_KEYS = ['fiber_g', 'added_sugar_g', 'sat_fat_g', 'alcohol_g', 'group', 'fried'] as const
+
 function toItem(i: ParsedEstimateItem): MealItem {
-  return { name: i.name, quantity: i.quantity, grams: i.grams, calories: i.calories, protein_g: i.protein_g, carbs_g: i.carbs_g, fat_g: i.fat_g }
+  const item: MealItem = { name: i.name, quantity: i.quantity, grams: i.grams, calories: i.calories, protein_g: i.protein_g, carbs_g: i.carbs_g, fat_g: i.fat_g }
+  for (const k of DETAIL_KEYS) if (i[k] != null) Object.assign(item, { [k]: i[k] })
+  return item
+}
+
+/** Scales an item's gram-based detail (fibre, sugar, sat fat, alcohol) by `k`. */
+export function scaleDetail<T extends ItemDetail>(item: T, k: number): T {
+  const r1 = (n: number | null | undefined) => (n == null ? n : Math.round(n * k * 10) / 10)
+  return { ...item, fiber_g: r1(item.fiber_g), added_sugar_g: r1(item.added_sugar_g), sat_fat_g: r1(item.sat_fat_g), alcohol_g: r1(item.alcohol_g) }
 }
 
 /** Whether the items' sum is close enough to the posted total to show both. */
@@ -61,11 +71,18 @@ export function postedItems(log: LogLike): MealItem[] {
 export function itemsForPost(items: ParsedEstimateItem[], multiplier: number): MealItem[] | null {
   if (!items.length) return null
   const k = (n: number) => Math.round(n * multiplier)
-  return items.map((i) => ({ ...toItem(i), grams: i.grams == null ? null : k(i.grams), calories: k(i.calories), protein_g: k(i.protein_g), carbs_g: k(i.carbs_g), fat_g: k(i.fat_g) }))
+  return items.map((i) => {
+    const scaled = { ...scaleDetail(toItem(i), multiplier), grams: i.grams == null ? null : k(i.grams), calories: k(i.calories), protein_g: k(i.protein_g), carbs_g: k(i.carbs_g), fat_g: k(i.fat_g) }
+    for (const key of DETAIL_KEYS) if (scaled[key] == null) delete scaled[key]
+    return scaled
+  })
 }
 
 // First match wins, so specific words come before general ones.
 const EMOJI: [RegExp, string][] = [
+  [/\b(beer|lager|ale|stout|cider)\b/, '🍺'],
+  [/\b(wine|champagne|prosecco|sangria)\b/, '🍷'],
+  [/\b(vodka|whiske?y|scotch|bourbon|rum|gin|tequila|brandy|cognac|cocktail|margarita|mojito|martini|liquor|breezer|shot)\b/, '🍸'],
   [/egg|omelet|bhurji/, '🥚'],
   [/chicken|tikka|tandoori|wing/, '🍗'],
   [/fish|salmon|tuna|prawn|shrimp/, '🐟'],
