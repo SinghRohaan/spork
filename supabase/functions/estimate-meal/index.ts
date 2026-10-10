@@ -6,21 +6,24 @@
 // is what actually protects the free-tier Gemini quota (spec §6 AI
 // provider notes) from being hit by anyone who reads the client bundle.
 
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
+// Read through globalThis so the pure checks below can also be imported by unit tests (Node).
+// deno-lint-ignore no-explicit-any
+const env = (key: string): string | undefined => (globalThis as any).Deno?.env.get(key)
+const GEMINI_API_KEY = env('GEMINI_API_KEY')
 // Model is overridable via the GEMINI_MODEL secret (e.g. 'gemini-flash-latest'
 // for better vision accuracy) without a code change. Default unchanged.
-const GEMINI_MODEL = Deno.env.get('GEMINI_MODEL') || 'gemini-flash-lite-latest'
+const GEMINI_MODEL = env('GEMINI_MODEL') || 'gemini-flash-lite-latest'
 // Backup models, tried in order when the main one is overloaded (503) or
 // rate-limited (429). Each model has its own capacity, so a demand spike on
 // one rarely hits the others. Overridable via the GEMINI_FALLBACK_MODELS
 // secret (comma-separated).
-const GEMINI_FALLBACK_MODELS = (Deno.env.get('GEMINI_FALLBACK_MODELS') || 'gemini-flash-latest,gemini-2.5-flash-lite')
+const GEMINI_FALLBACK_MODELS = (env('GEMINI_FALLBACK_MODELS') || 'gemini-flash-latest,gemini-2.5-flash-lite')
   .split(',').map((m) => m.trim()).filter(Boolean)
 const GEMINI_MODELS = [...new Set([GEMINI_MODEL, ...GEMINI_FALLBACK_MODELS])]
 const geminiUrl = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+const SUPABASE_URL = env('SUPABASE_URL') ?? ''
+const SUPABASE_ANON_KEY = env('SUPABASE_ANON_KEY') ?? ''
 /** AI estimates per person per day (migration 0019's consume_ai_quota). */
 const DAILY_ESTIMATE_LIMIT = 60
 /** ~6 MB of photo; the app sends ~150–300 KB. */
@@ -75,6 +78,34 @@ Alcohol is 7 kcal per gram and is NOT protein, carbs or fat: calories ≈ 4×pro
 
 `
 
+// Anchors for the numbers. Photo estimators are ~35% off on calories and
+// worse on protein, mostly from misjudged portions and misidentified dishes;
+// reference values + a measured-portion method + a self-check cut that down.
+const REFERENCE_VALUES = `REFERENCE VALUES — typical Indian home food, per 100 g as served (kcal · protein · carbs · fat · fibre g). Scale to the grams you estimated; adjust for visible oil, ghee, cream or sugar.
+- Cooked white rice 130 · 2.7 · 28 · 0.3 · 0.4 | brown rice 112 · 2.3 · 24 · 0.8 · 1.8 | chicken biryani 190 · 9 · 23 · 7 · 1 | poha 160 · 3 · 26 · 5 · 1.5 | upma 170 · 4 · 25 · 6 · 2
+- Phulka/roti, no ghee (1 medium ≈ 40 g) 260 · 8.5 · 50 · 2.5 · 6 | plain paratha (1 ≈ 80 g) 320 · 7 · 45 · 13 · 4 | naan (1 ≈ 90 g) 300 · 9 · 50 · 6 · 2 | white bread (1 slice ≈ 28 g) 265 · 9 · 49 · 3 · 2.7
+- Idli (1 ≈ 40 g) 145 · 4.5 · 30 · 0.5 · 1.5 | plain dosa (1 ≈ 80 g) 210 · 4.5 · 32 · 7 · 1.5 | sambar 65 · 3 · 9 · 2 · 2.5
+- Dal with tadka 110 · 6 · 15 · 3 · 3 | rajma/chole curry 140 · 6.5 · 18 · 5 · 6 | dry mixed-veg sabzi 90 · 2.5 · 9 · 5 · 3.5 | aloo sabzi 120 · 2 · 15 · 6 · 2 | palak paneer 150 · 7 · 6 · 11 · 2.5 | green salad 20 · 1 · 4 · 0.2 · 1.8
+- Paneer 290 · 18 · 3 · 23 · 0 | curd/dahi (whole milk) 60 · 3.5 · 4.7 · 3.3 · 0 | toned milk 58 · 3.2 · 4.7 · 3 · 0 | egg (1 large ≈ 50 g) 155 · 12.6 · 1.1 · 10.6 · 0
+- Grilled/tandoori chicken breast 165 · 31 · 0 · 3.6 · 0 | tandoori chicken leg with skin 200 · 25 · 3 · 10 · 0 | chicken curry with gravy 160 · 14 · 5 · 9 · 1 | mutton curry 200 · 15 · 4 · 14 · 1 | fish curry 130 · 14 · 4 · 7 · 0.5
+- Samosa (1 medium ≈ 70 g) 310 · 5 · 33 · 17 · 3 | pakora 300 · 7 · 28 · 18 · 4 | gulab jamun (1 ≈ 40 g) 330 · 4 · 50 · 13 · 0.5, of which added sugar 35 | pizza (1 slice ≈ 100 g) 270 · 11 · 33 · 10 · 2
+- Banana 89 · 1.1 · 23 · 0.3 · 2.6 | apple 52 · 0.3 · 14 · 0.2 · 2.4 | mango 60 · 0.8 · 15 · 0.4 · 1.6 | almonds 580 · 21 · 22 · 50 · 12.5 | roasted peanuts 585 · 24 · 21 · 50 · 8
+- Ghee 900 kcal (100 g fat, 62 g saturated); cooking oil 884 (100 g fat, ~15 g saturated); butter 717 (81 g fat, 51 g saturated); mayonnaise 680 (75 g fat) — 1 tsp ≈ 5 g, 1 tbsp ≈ 15 g
+- Whey protein powder (1 scoop ≈ 30 g) 400 · 78 · 8 · 6 · 0 | oats cooked in water 70 · 2.5 · 12 · 1.4 · 1.7
+- Per 100 ml: masala chai with 2 tsp sugar 55 · 1.7 · 8 · 1.8 (added sugar 5.5) | cola 42 (added sugar 10.6) | beer 5% 43 (alcohol 3.9 g) | wine 12% 83 (alcohol 9.5 g) | spirits 40% 231 (alcohol 31.6 g; a 30 ml peg ≈ 69 kcal)
+- Measures: katori ≈ 150 ml (small 100 ml), steel glass ≈ 250 ml, cup ≈ 150 ml, tablespoon 15 ml, teaspoon 5 ml, dinner plate 25–28 cm, quarter plate ≈ 18 cm.
+
+`
+
+const SELF_CHECK = `SELF-CHECK — before answering, verify EVERY item and fix whatever fails:
+1. calories ≈ 4×protein + 4×carbs + 9×fat + 7×alcohol (within 15%).
+2. Calories per gram fits the food: salad/sabzi 0.2–1.6, cooked rice/dal/curries 0.6–2.5, roti/paratha/naan 2.4–3.6, fried snacks 2.5–5.5, sweets 1.5–5.5, nuts 5–7, oil/ghee 7–9, drinks 0.3–1.2 (spirits ≈ 2.3).
+3. protein + carbs + fat + alcohol ≤ grams; fiber_g ≤ carbs; added_sugar_g ≤ carbs; sat_fat_g ≤ fat.
+4. Compare each item with the reference values: if you differ by more than ~30% per 100 g, the dish or the portion is wrong — look again.
+5. Top-level totals are exactly the sum of the items.
+
+`
+
 const PROMPT = `You are a registered-dietitian-level nutrition estimator specialising in Indian and South Asian home food, with broad knowledge of global cuisine. You are looking at a photo of one meal.
 
 Work in two passes.
@@ -85,8 +116,11 @@ PASS 1 — IDENTIFY
 - When two dishes look alike and you cannot tell them apart (e.g. soy chunk curry vs prawn curry vs paneer curry, chicken vs mutton, dal vs sambar), do NOT pick one confidently: name it generically ("Curry with chunks (soy/prawn?)") and set that item's confidence to "low".
 - COUNT discrete items: boiled egg halves → whole eggs (4 halves = 2 eggs), rotis, idlis, pieces of chicken.
 
-PASS 2 — QUANTIFY, then compute nutrition
-- Estimate each item's amount using visual references:
+PASS 2 — MEASURE, then compute nutrition
+- Measure before you weigh: judge each item's footprint (cm) and depth against the plate, katori, spoon or hand, turn that into volume (ml), then grams (cooked rice, dal, curry ≈ 1 g/ml; dry sabzi ≈ 0.6–0.8 g/ml; leafy salad ≈ 0.3–0.5 g/ml).
+- Photo estimates are known to UNDER-estimate big portions. When a plate, bowl or katori is full or heaped, do NOT shrink it — count the full visible amount.
+- Count hidden calories: the shine of oil or ghee, gravy pooled under food, butter on roti, food stacked under other food, dips and sauces.
+- Visual references:
   • Indian steel katori/bowl ≈ 150–180 ml when full; small katori ≈ 100 ml
   • Dinner plate ≈ 25–28 cm across; quarter-plate ≈ 18 cm
   • Tablespoon ≈ 15 ml; a cupped handful of rice ≈ 80–100 g cooked
@@ -106,7 +140,7 @@ CONFIDENCE
 ASSUMPTIONS
 - Add 1–3 short notes about the biggest assumptions you made that the user may want to correct (e.g. "Assumed curry is soy chunks — tap to change if it's prawn", "Assumed 1 tsp oil in the sabzi"). Keep each under 90 characters.
 
-${NUTRITION_DETAIL}Return ONLY JSON of this shape:
+${REFERENCE_VALUES}${SELF_CHECK}${NUTRITION_DETAIL}Return ONLY JSON of this shape:
 {
   "is_food": boolean, "not_food_reason": string,
   "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "added_sugar_g": number, "sat_fat_g": number, "alcohol_g": number, "group": string, "fried": boolean, "confidence": "low"|"medium"|"high" }],
@@ -140,7 +174,7 @@ STEP 4 — NOTHING READABLE: identify the product type from the pack and estimat
 Return ONE item: name = brand + product ("Yoga Bar Protein Bar – Chocolate Brownie"), quantity = what was eaten in household terms ("1 bar (60 g)", "1 serving (30 g)", "½ pack (50 g)"), grams = weight eaten, and its calories/protein_g/carbs_g/fat_g. Confidence "high" only when numbers were read off a visible table.
 In "assumptions", say where the numbers came from in under 90 characters, e.g. "Read from the label · per serve (60 g)" or "No table visible — used Yoga Bar's published values".
 
-${NUTRITION_DETAIL}Return ONLY JSON of this shape:
+${SELF_CHECK}${NUTRITION_DETAIL}Return ONLY JSON of this shape:
 {
   "is_food": boolean, "not_food_reason": string,
   "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "added_sugar_g": number, "sat_fat_g": number, "alcohol_g": number, "group": string, "fried": boolean, "confidence": "low"|"medium"|"high" }],
@@ -161,7 +195,7 @@ const TEXT_PROMPT = `You are a registered-dietitian-level nutrition estimator sp
 - Per-item confidence: "high" when the user gave the quantity, "medium" when you assumed a typical serving, "low" when the dish itself is vague ("snacks", "some sweets").
 - In "assumptions", list the 1–3 biggest guesses (under 90 characters each).
 
-${NUTRITION_DETAIL}Return ONLY JSON of this shape:
+${REFERENCE_VALUES}${SELF_CHECK}${NUTRITION_DETAIL}Return ONLY JSON of this shape:
 {
   "is_food": boolean, "not_food_reason": string,
   "items": [{ "name": string, "quantity": string, "grams": number, "calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "added_sugar_g": number, "sat_fat_g": number, "alcohol_g": number, "group": string, "fried": boolean, "confidence": "low"|"medium"|"high" }],
@@ -263,6 +297,93 @@ function buildUserContext(description?: string, confirmedItems?: ConfirmedItem[]
   return parts.join('\n\n')
 }
 
+// ── Double-check every answer ─────────────────────────────────────────────
+// The model is asked to self-check, but it doesn't always. These checks are
+// physics, not taste: calories must match the macros, a food's calories per
+// gram must be possible for what it is, and nutrients can't weigh more than
+// the food. Failures go back to the model once; whatever is still wrong is
+// corrected here and the estimate is marked low-confidence.
+
+export interface EstItem {
+  name: string; quantity?: string; grams?: number; calories: number; protein_g: number; carbs_g: number; fat_g: number
+  fiber_g?: number; added_sugar_g?: number; sat_fat_g?: number; alcohol_g?: number; group?: string; fried?: boolean; confidence?: string
+}
+export interface Estimate {
+  is_food?: boolean; not_food_reason?: string; items: EstItem[]
+  calories: number; protein_g: number; carbs_g: number; fat_g: number; confidence?: string; assumptions?: string[]
+}
+
+/** Calories per gram that are possible for each food group, as served (wide on purpose: catches misreads, not style). */
+export const KCAL_PER_GRAM: Record<string, [number, number]> = {
+  vegetable: [0.1, 2], fruit: [0.2, 3.2], pulse: [0.25, 4], whole_grain: [0.6, 4.5], refined_grain: [0.8, 4.6],
+  dairy: [0.3, 4.2], egg: [1.2, 2.6], meat: [0.8, 5.5], fish: [0.7, 3.2], nuts_seeds: [4.5, 7.3], fat_oil: [3, 9.1],
+  sweet: [1.2, 5.8], fried_snack: [2, 6], sugary_drink: [0.2, 1.2], alcohol: [0.25, 2.6], protein_supplement: [0.25, 4.6],
+}
+const NON_ALCOHOLIC = /alcohol[- ]?free|non[- ]?alcoholic|\b0\.0\b|zero alcohol/i
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0)
+const atwater = (i: EstItem) => 4 * i.protein_g + 4 * i.carbs_g + 9 * i.fat_g + 7 * (i.alcohol_g ?? 0)
+
+function withTotals(e: Estimate): Estimate {
+  const sum = (k: 'calories' | 'protein_g' | 'carbs_g' | 'fat_g') => Math.round(e.items.reduce((t, i) => t + i[k], 0))
+  return { ...e, calories: sum('calories'), protein_g: sum('protein_g'), carbs_g: sum('carbs_g'), fat_g: sum('fat_g') }
+}
+
+/** Cleans the model's JSON and lists what's physically wrong with it. Totals always become the sum of the items. */
+export function checkEstimate(raw: unknown, mode: 'meal' | 'packaged' | 'text'): { estimate: Estimate | null; issues: string[] } {
+  if (typeof raw !== 'object' || raw === null) return { estimate: null, issues: ['The answer was not a JSON object'] }
+  const r = raw as Record<string, unknown>
+  if (r.is_food === false) return { estimate: { ...(r as unknown as Estimate), items: [], calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }, issues: [] }
+  const items: EstItem[] = (Array.isArray(r.items) ? r.items : [])
+    .filter((i): i is Record<string, unknown> => typeof i === 'object' && i !== null && typeof (i as { name?: unknown }).name === 'string')
+    .map((i) => ({
+      ...(i as unknown as EstItem),
+      grams: num(i.grams), calories: num(i.calories), protein_g: num(i.protein_g), carbs_g: num(i.carbs_g), fat_g: num(i.fat_g),
+      fiber_g: num(i.fiber_g), added_sugar_g: num(i.added_sugar_g), sat_fat_g: num(i.sat_fat_g), alcohol_g: num(i.alcohol_g),
+    }))
+  const issues: string[] = []
+  if (!items.length) issues.push('No items were listed')
+  const tolerance = mode === 'packaged' ? 0.25 : 0.15 // labels round, and count fibre and polyols differently
+  for (const i of items) {
+    const name = `"${i.name}"`
+    const calc = atwater(i)
+    if (Math.abs(i.calories - calc) > 20 && Math.abs(i.calories - calc) / Math.max(i.calories, calc) > tolerance) {
+      issues.push(`${name}: ${Math.round(i.calories)} kcal doesn't match its macros (4×protein + 4×carbs + 9×fat + 7×alcohol = ${Math.round(calc)} kcal)`)
+    }
+    const range = KCAL_PER_GRAM[i.group ?? '']
+    if (range && i.grams && i.calories) {
+      const perGram = i.calories / i.grams
+      if (perGram < range[0] || perGram > range[1]) issues.push(`${name}: ${perGram.toFixed(1)} kcal per gram is not possible for ${i.group} (${range[0]}–${range[1]}) — check the dish or the grams`)
+    }
+    const mass = i.protein_g + i.carbs_g + i.fat_g + (i.alcohol_g ?? 0)
+    if (i.grams && mass > i.grams * 1.05) issues.push(`${name}: protein + carbs + fat (${Math.round(mass)} g) weigh more than the food (${Math.round(i.grams)} g)`)
+    if ((i.fiber_g ?? 0) > i.carbs_g + 1) issues.push(`${name}: fibre (${i.fiber_g} g) can't exceed carbs (${i.carbs_g} g)`)
+    if ((i.added_sugar_g ?? 0) > i.carbs_g + 1) issues.push(`${name}: added sugar (${i.added_sugar_g} g) can't exceed carbs (${i.carbs_g} g)`)
+    if ((i.sat_fat_g ?? 0) > i.fat_g + 0.5) issues.push(`${name}: saturated fat (${i.sat_fat_g} g) can't exceed fat (${i.fat_g} g)`)
+    if (i.group === 'alcohol' && !i.alcohol_g && !NON_ALCOHOLIC.test(i.name)) issues.push(`${name}: an alcoholic drink needs alcohol_g (ml × ABV × 0.789)`)
+  }
+  return { estimate: withTotals({ ...(r as unknown as Estimate), items }), issues }
+}
+
+/** Fixes what can be fixed safely once the model has had its second try, and flags the rest. */
+export function finalizeEstimate(e: Estimate, mode: 'meal' | 'packaged' | 'text', issues: string[]): Estimate {
+  if (!issues.length || e.is_food === false) return e
+  let adjusted = false
+  const items = e.items.map((i) => {
+    const out = { ...i }
+    if ((out.fiber_g ?? 0) > out.carbs_g) { out.fiber_g = out.carbs_g; adjusted = true }
+    if ((out.added_sugar_g ?? 0) > out.carbs_g) { out.added_sugar_g = out.carbs_g; adjusted = true }
+    if ((out.sat_fat_g ?? 0) > out.fat_g) { out.sat_fat_g = out.fat_g; adjusted = true }
+    const calc = atwater(out)
+    // Printed label calories stand; otherwise the macros (the more detailed estimate) set the calories.
+    if (mode !== 'packaged' && calc > 0 && Math.abs(out.calories - calc) > 20 && Math.abs(out.calories - calc) / Math.max(out.calories, calc) > 0.15) {
+      out.calories = Math.round(calc); adjusted = true
+    }
+    return out
+  })
+  const note = adjusted ? 'Some numbers were adjusted so they add up — worth a quick check' : 'Some values looked unusual for this food — worth a quick check'
+  return withTotals({ ...e, items, confidence: 'low', assumptions: [...(e.assumptions ?? []).slice(0, 2), note] })
+}
+
 /**
  * The single provider-specific function (spec §6/§10) — swapping to a
  * paid Gemini key, a different model, or an entirely different vision
@@ -286,7 +407,32 @@ async function estimateMeal(
     ...(photoBase64 ? [{ inline_data: { mime_type: 'image/jpeg', data: photoBase64 } }] : []),
     { text: [FOOD_CHECK + prompt, buildUserContext(description, confirmedItems)].filter(Boolean).join('\n\n') },
   ]
+  const deadline = Date.now() + 40_000
 
+  const first = await callGemini(parts, deadline)
+  let { estimate, issues } = checkEstimate(first, mode)
+  if (!estimate) throw new EstimateFailure('Gemini returned an unexpected shape', 502)
+
+  // Second look, only when something failed and there's time: same photo, the
+  // previous answer and exactly what was wrong with it.
+  if (issues.length && deadline - Date.now() > 15_000) {
+    try {
+      const review = `REVIEW — your previous answer failed these checks:\n${issues.slice(0, 8).map((x) => `- ${x}`).join('\n')}\n` +
+        `Look at the ${photoBase64 ? 'photo' : 'description'} again. Fix the identification, the grams or the nutrients — whichever is wrong — ` +
+        `keep everything that was right, and return the complete corrected JSON.\nPrevious answer: ${JSON.stringify(first).slice(0, 6000)}`
+      const second = checkEstimate(await callGemini([...parts, { text: review }], deadline), mode)
+      if (second.estimate && second.estimate.is_food !== false && second.issues.length <= issues.length) ({ estimate, issues } = second)
+    } catch (err) {
+      console.error('Second look failed, keeping the first answer:', err instanceof Error ? err.message : err)
+    }
+  }
+  if (issues.length) console.log(`estimate-meal: ${issues.length} check(s) still failing — corrected`, issues.slice(0, 3))
+  return finalizeEstimate(estimate, mode, issues)
+}
+
+/** One Gemini call with retries and backup models; returns the parsed JSON. */
+// deno-lint-ignore no-explicit-any
+async function callGemini(parts: any[], deadline: number): Promise<unknown> {
   const requestBody = JSON.stringify({
     contents: [{ parts }],
     generationConfig: {
@@ -304,19 +450,18 @@ async function estimateMeal(
   const RETRYABLE_STATUSES = new Set([429, 500, 503])
   const ATTEMPTS_PER_MODEL = 2
   const PER_CALL_TIMEOUT_MS = 20_000
-  const DEADLINE = Date.now() + 40_000
   let geminiRes: Response | null = null
   let lastFailure = ''
 
   models: for (const model of GEMINI_MODELS) {
     for (let attempt = 1; attempt <= ATTEMPTS_PER_MODEL; attempt++) {
-      if (Date.now() > DEADLINE - 2_000) break models
+      if (Date.now() > deadline - 2_000) break models
       try {
         const res = await fetch(`${geminiUrl(model)}?key=${GEMINI_API_KEY}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: requestBody,
-          signal: AbortSignal.timeout(Math.max(1_000, Math.min(PER_CALL_TIMEOUT_MS, DEADLINE - Date.now()))),
+          signal: AbortSignal.timeout(Math.max(1_000, Math.min(PER_CALL_TIMEOUT_MS, deadline - Date.now()))),
         })
         if (res.ok) {
           if (model !== GEMINI_MODEL) console.log(`Gemini: used backup model ${model}`)
@@ -353,7 +498,8 @@ async function estimateMeal(
   }
 }
 
-Deno.serve(async (req: Request) => {
+// deno-lint-ignore no-explicit-any
+if ((globalThis as any).Deno) Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS })
   }

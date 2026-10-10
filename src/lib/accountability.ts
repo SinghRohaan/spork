@@ -44,7 +44,37 @@ export type Tone = 'good' | 'mid' | 'low'
 export interface Reason { tone: Tone; text: string; hint?: string; short?: string }
 
 /** Rough share of the day each meal should take. */
-const MEAL_SHARE: Record<MealType, number> = { breakfast: 0.25, lunch: 0.35, dinner: 0.3, snack: 0.1 }
+/**
+ * Every threshold the meal score uses, in one place (see docs/meal-score-matrix.md
+ * for where each number comes from). Ranges are [zero points, full points] and
+ * score linearly in between, the way the Healthy Eating Index does.
+ */
+export const SCORE_RULES = {
+  /** Share of the day's calories each meal is planned for. */
+  share: { breakfast: 0.25, lunch: 0.3, dinner: 0.3, snack: 0.15 } as Record<MealType, number>,
+  /** A "snack" bigger than this share of the day is scored as a meal (share 25%). */
+  mealSizedSnack: 0.2,
+  /** Per-meal protein target clamps, g (ISSN: 20–40 g per meal). */
+  proteinClamp: { main: [20, 40], snack: [10, 20] },
+  /** Protein: 0 at 25% of target, full at 90%. */
+  protein: [0.25, 0.9],
+  /** Fibre density, g per 1,000 kcal (DRI adequate intake: 14). */
+  fiberPer1000: [4, 14],
+  /** Added sugar, share of calories (HEI-2020: full ≤ 6.5%, zero ≥ 26%). */
+  addedSugar: [0.26, 0.065],
+  /** Saturated fat, share of calories (HEI-2020: full ≤ 8%, zero ≥ 16%). */
+  satFat: [0.16, 0.08],
+  /** Energy density of the solid food, kcal/g (Rolls: low < 1.5, high > 4). */
+  density: [4, 1.5],
+  /** Share of calories from fried food. */
+  fried: [0.6, 0],
+  /** Fat and carbs as a share of macro calories (AMDR upper edges 35% / 65%). */
+  fatShare: [0.55, 0.35],
+  carbShare: [0.8, 0.65],
+  /** Portion vs the meal's budget: full 0.8–1.2×, zero at 0.4× and 1.8×. Snacks: full ≤ 1×, zero at 1.67×. */
+  portion: { low: [0.4, 0.8], high: [1.8, 1.2], snack: [1.67, 1] },
+} as const
+const MEAL_SHARE = SCORE_RULES.share
 
 /** Everyday Indian protein top-ups, biggest first. */
 const PROTEIN_FOODS: [string, number][] = [
@@ -77,6 +107,8 @@ export interface MealScore {
   reasons: Reason[]
   /** True when the meal has no fibre / sugar / food-group detail (older posts): those parts are scored as neutral. */
   basic: boolean
+  /** Extra context, e.g. a big snack that was scored as a meal. */
+  note?: string
 }
 
 const ALCOHOL_WORDS = /\b(vodka|whiske?y|scotch|bourbon|rum|gin|tequila|brandy|cognac|beer|lager|ale|stout|wine|champagne|prosecco|cider|sake|soju|cocktail|margarita|mojito|martini|sangria|breezer|liquor|alcohol|feni|toddy|daru)\b/i
@@ -105,17 +137,26 @@ export function mealAlcoholG(meal: ScoredMeal): number {
 const drinks = (g: number) => Math.max(1, Math.round(g / 10))
 const drinksText = (g: number) => `${drinks(g)} standard drink${drinks(g) === 1 ? '' : 's'}`
 
+/** 0 at `zero`, 1 at `full`, straight line in between (works in either direction). */
+export const lin = (x: number, [zero, full]: readonly [number, number]) =>
+  Math.min(1, Math.max(0, (x - zero) / (full - zero)))
+const clamp = (x: number, [lo, hi]: readonly [number, number]) => Math.min(hi, Math.max(lo, x))
+
 /**
- * Meal score, built the way a dietitian reads a plate (Healthy Eating Index,
- * Nutri-Score, ICMR-NIN "My Plate", WHO limits):
+ * Meal score out of 10 — a dietitian's read of the plate, every part scored
+ * on a sliding scale against published standards (SCORE_RULES):
  *
- * Main meals (10): protein 3 · portion 2 · fibre & plants 2 · food quality 2 · balance 1
- * Snacks (10):     protein-or-plants 4 · size 3 · food quality 3
- * Quantity counts everywhere: the AI turns "1 bowl" into grams, grams drive
- * every number, and calories-per-gram flags dense food (chips, sweets, fried).
+ *   Main meal: protein 3 · portion 2 · fibre 2 · food quality 2 · balance 1
+ *   Snack:     protein-or-plants 4 · size 3 · food quality 3
+ *   Food quality = added sugar ½ · saturated fat ¼ · fried / calorie-dense ¼
  *
- * Hard rules first: mostly alcohol → 1–2; some alcohol → −2 and at most 5;
- * mostly added sugar → at most 3; under 40 kcal → not scored.
+ * Quantity: grams drive every number; fibre, sugar and fat are judged per
+ * calorie so size can't distort them; an over-sized meal only earns protein
+ * for the part that fits its budget, and is capped (1.5× → 6, 2× → 4).
+ * Hard rules: mostly alcohol → 1–2 · some alcohol → −2, max 5 · mostly sugar
+ * → max 3 · mostly fried/sweets → snack max 3, meal max 5 (4 if 80%+) · under 40 kcal or
+ * no macros → not scored. Meals without AI detail score fibre and quality at
+ * half marks ("basic score").
  */
 export function mealScore(meal: ScoredMeal, goals: Goals): MealScore {
   const cal = meal.calories
@@ -125,106 +166,96 @@ export function mealScore(meal: ScoredMeal, goals: Goals): MealScore {
   // Enough of the meal (by calories) has AI detail to judge fibre and quality.
   const basic = !detailed.length || sumBy(detailed, (i) => i.calories) < itemKcal * 0.8
   const alcoholG = mealAlcoholG(meal)
+  const macroKcal = meal.protein * 4 + meal.carbs * 4 + meal.fat * 9
+  const unscored = (headline: string, text: string): MealScore => ({ score: null, tone: 'mid', headline, reasons: [{ tone: 'mid', text }], basic })
 
-  if (cal < 40 && !alcoholG) {
-    return { score: null, tone: 'mid', headline: 'Too light to score', reasons: [{ tone: 'mid', text: `${Math.round(cal)} kcal — too little to score` }], basic }
-  }
+  if (cal < 40 && !alcoholG) return unscored('Too light to score', `${Math.round(cal)} kcal — too little to score`)
+  // Calories typed in with no protein / carbs / fat: nothing to judge.
+  if (!alcoholG && macroKcal < cal * 0.2) return unscored('Not enough detail to score', 'Add protein, carbs and fat to get a score')
 
-  const share = MEAL_SHARE[meal.meal_type]
-  const snack = meal.meal_type === 'snack'
-  const label = meal.meal_type.charAt(0).toUpperCase() + meal.meal_type.slice(1)
+  // ── Role, budget and targets ─────────────────────────────────────────────
+  const mealSized = meal.meal_type === 'snack' && cal > goals.calories * SCORE_RULES.mealSizedSnack
+  const snack = meal.meal_type === 'snack' && !mealSized
+  const share = mealSized ? 0.25 : MEAL_SHARE[meal.meal_type]
+  const kind = mealSized ? 'meal' : meal.meal_type
+  const label = kind.charAt(0).toUpperCase() + kind.slice(1)
   const sizeRatio = cal / (goals.calories * share)
   const dayShare = cal / goals.calories
-  const proteinTarget = goals.protein * share
-  const proteinGap = Math.round(proteinTarget - meal.protein)
-  const macroKcal = meal.protein * 4 + meal.carbs * 4 + meal.fat * 9
+  // Eating double doesn't earn double credit: protein counts for the part within budget.
+  const fit = Math.min(1, (snack ? 1 : 1.2) / sizeRatio)
+  const proteinTarget = clamp(goals.protein * share, snack ? SCORE_RULES.proteinClamp.snack : SCORE_RULES.proteinClamp.main)
   const reasons: Reason[] = []
-  // Quantity: eating double doesn't earn double credit. Protein and fibre only
-  // count for the part of the meal that fits its calorie budget.
-  const fit = Math.min(1, (snack ? 1.5 : 1.25) / sizeRatio)
-  const proteinRatio = proteinTarget ? (meal.protein * fit) / proteinTarget : 1
 
-  // ── Detail (newer posts) ─────────────────────────────────────────────────
+  // ── Detail sums (newer posts) ────────────────────────────────────────────
   const fiber = sumBy(detailed, (i) => i.fiber_g ?? 0)
-  const fiberFit = fiber * fit
-  const sugarShare = cal ? (sumBy(detailed, (i) => i.added_sugar_g ?? 0) * 4) / cal : 0
-  const satShare = cal ? (sumBy(detailed, (i) => i.sat_fat_g ?? 0) * 9) / cal : 0
+  const fiberPer1000 = cal ? (fiber / cal) * 1000 : 0
+  const sugarShare = cal ? Math.min(1, (sumBy(detailed, (i) => i.added_sugar_g ?? 0) * 4) / cal) : 0
+  const satShare = cal ? Math.min(1, (sumBy(detailed, (i) => i.sat_fat_g ?? 0) * 9) / cal) : 0
   const kcalWhere = (f: (i: ScoredItem) => boolean) => (cal ? sumBy(detailed.filter(f), (i) => i.calories) / cal : 0)
   const plantShare = kcalWhere((i) => PLANT_GROUPS.has(i.group ?? '') || (snack && i.group === 'nuts_seeds'))
   const friedShare = kcalWhere((i) => Boolean(i.fried) || i.group === 'fried_snack')
-  // Fried snacks, sweets and sugary drinks — mostly "empty" calories.
   const junkShare = kcalWhere((i) => Boolean(i.fried) || ['fried_snack', 'sweet', 'sugary_drink'].includes(i.group ?? ''))
-  // Calories per gram of the solid food — drinks and nuts don't count (beverages
-  // are always left out of energy density; nuts are dense but nourishing).
+  // Calories per gram of the solid food — drinks and nuts are left out (beverages
+  // always are in energy-density work; nuts are dense but nourishing).
   const solid = detailed.filter((i) => i.grams && !DRINK_GROUPS.has(i.group ?? '') && i.group !== 'nuts_seeds' && !/\bml\b/i.test(i.quantity ?? ''))
   const solidGrams = sumBy(solid, (i) => i.grams ?? 0)
-  const density = solidGrams >= 50 && sumBy(solid, (i) => i.calories) >= cal * 0.5 ? sumBy(solid, (i) => i.calories) / solidGrams : 0
+  const solidKcal = sumBy(solid, (i) => i.calories)
+  const density = solidGrams >= 50 && solidKcal >= cal * 0.5 ? solidKcal / solidGrams : 0
 
-  /** Food-quality penalties: added sugar, fried / saturated fat, very dense food. `w` weighs them (snacks 1.5×). */
-  function qualityPenalty(w: number): number {
-    let pen = 0
-    if (sugarShare > 0.25) { pen += 2 * w; reasons.push({ tone: 'low', short: 'sugary', text: sugarShare >= 0.95 ? 'Almost all added sugar' : `High in added sugar: ${pct(sugarShare)} of the calories`, hint: 'Go for unsweetened, or fruit instead' }) }
-    else if (sugarShare > 0.1) { pen += 1 * w; reasons.push({ tone: 'mid', short: 'some added sugar', text: `Some added sugar: ${pct(sugarShare)} of the calories`, hint: 'WHO suggests under 10%' }) }
-    if (friedShare >= 0.3 || satShare > 0.1) { pen += 1 * w; reasons.push({ tone: 'mid', short: friedShare >= 0.3 ? 'fried' : 'rich', text: friedShare >= 0.3 ? 'Fried or very oily food' : `High in saturated fat: ${pct(satShare)} of the calories`, hint: 'Grilled, roasted or less ghee/oil next time' }) }
-    if (density > 3) { pen += 1; reasons.push({ tone: 'mid', short: 'calorie-dense', text: `Calorie-dense: ${density.toFixed(1)} kcal per gram`, hint: 'Bulk it up with salad, sabzi or curd' }) }
-    return pen
+  // ── Part scores, each 0–1 ────────────────────────────────────────────────
+  const proteinS = lin(meal.protein * fit, [proteinTarget * SCORE_RULES.protein[0], proteinTarget * SCORE_RULES.protein[1]])
+  const fiberS = basic ? 0.5 : lin(fiberPer1000, SCORE_RULES.fiberPer1000)
+  const sugarS = basic ? 0.5 : lin(sugarShare, SCORE_RULES.addedSugar)
+  const satS = basic ? 0.5 : lin(satShare, SCORE_RULES.satFat)
+  const friedDenseS = basic ? 0.5 : Math.min(density ? lin(density, SCORE_RULES.density) : 1, lin(friedShare, SCORE_RULES.fried))
+  const qualityS = 0.5 * sugarS + 0.25 * satS + 0.25 * friedDenseS
+  const fatShare = macroKcal ? (meal.fat * 9) / macroKcal : 0
+  const carbShare = macroKcal ? (meal.carbs * 4) / macroKcal : 0
+  const balanceS = Math.min(lin(fatShare, SCORE_RULES.fatShare), lin(carbShare, SCORE_RULES.carbShare))
+  const portionS = snack ? lin(sizeRatio, SCORE_RULES.portion.snack)
+    : sizeRatio < 0.8 ? lin(sizeRatio, SCORE_RULES.portion.low) : lin(sizeRatio, SCORE_RULES.portion.high)
+
+  // ── Reasons ──────────────────────────────────────────────────────────────
+  const proteinGap = Math.max(0, Math.round(proteinTarget - meal.protein))
+  const proteinReason = () => {
+    if (proteinS >= 0.9) reasons.push({ tone: 'good', text: `${snack ? 'Protein-rich snack' : 'Good protein'}: ${Math.round(meal.protein)} g` })
+    else reasons.push({ tone: proteinS >= 0.5 ? 'mid' : 'low', short: 'light on protein', text: `Protein ${Math.round(meal.protein)} g — aim for about ${Math.round(proteinTarget)} g in a ${kind}`, hint: proteinGap > 3 ? `Add ${proteinFix(proteinGap)}` : undefined })
+  }
+  if (!basic) {
+    if (sugarS < 0.9) reasons.push({ tone: sugarS < 0.5 ? 'low' : 'mid', short: 'sugary', text: sugarShare >= 0.95 ? 'Almost all added sugar' : `Added sugar: ${pct(sugarShare)} of the calories`, hint: 'WHO: keep added sugar under 10% — unsweetened or fruit instead' })
+    if (satS < 0.6) reasons.push({ tone: 'mid', short: 'rich', text: `High in saturated fat: ${pct(satShare)} of the calories`, hint: 'Less ghee, butter, cream or cheese' })
+    if (friedDenseS < 0.6) reasons.push({ tone: 'mid', short: friedShare >= 0.3 ? 'fried' : 'calorie-dense', text: friedShare >= 0.3 ? 'Fried or very oily food' : `Calorie-dense: ${density.toFixed(1)} kcal per gram`, hint: friedShare >= 0.3 ? 'Grilled, roasted or air-fried next time' : 'Bulk it up with salad, sabzi or curd' })
   }
 
   let total: number
   if (!snack) {
-    // Protein — 3
-    let protein: number
-    if (proteinRatio >= 0.9) { protein = 3; reasons.push({ tone: 'good', text: `Good protein: ${Math.round(meal.protein)} g` }) }
-    else {
-      protein = proteinRatio >= 0.7 ? 2 : proteinRatio >= 0.4 ? 1 : 0
-      reasons.push({ tone: protein >= 2 ? 'mid' : 'low', short: 'light on protein', text: `Protein ${Math.round(meal.protein)} g, about ${proteinGap} g under target for a ${meal.meal_type}`, hint: `Add ${proteinFix(proteinGap)}` })
-    }
-    // Portion — 2
-    let portion: number
-    if (sizeRatio >= 0.75 && sizeRatio <= 1.25) { portion = 2; reasons.push({ tone: 'good', text: `Good size: ${pct(dayShare)} of your daily calories`, hint: `${label} budget ≈ ${pct(share)}` }) }
-    else if (sizeRatio >= 0.5 && sizeRatio < 0.75) { portion = 1; reasons.push({ tone: 'mid', short: 'on the light side', text: `Light ${meal.meal_type}: ${pct(dayShare)} of your daily calories`, hint: `${label} budget ≈ ${pct(share)}` }) }
-    else if (sizeRatio < 0.5) { portion = 0; reasons.push({ tone: 'low', short: 'very light', text: `Very light ${meal.meal_type}: ${pct(dayShare)} of your daily calories`, hint: 'Was anything left out of the log?' }) }
-    else if (sizeRatio <= 1.5) { portion = 1; reasons.push({ tone: 'mid', short: 'a bit big', text: `A bit big: ${pct(dayShare)} of your daily calories`, hint: `${label} budget ≈ ${pct(share)}` }) }
-    else { portion = 0; reasons.push({ tone: 'low', short: 'quite heavy', text: `Heavy: ${pct(dayShare)} of your daily calories in one meal`, hint: 'Go lighter on the next one' }) }
-    // Fibre & plants — 2 (neutral 1 without detail)
-    let plants = 1
+    proteinReason()
+    if (portionS >= 0.9) reasons.push({ tone: 'good', text: `Good size: ${pct(dayShare)} of your daily calories`, hint: `${label} budget ≈ ${pct(share)}` })
+    else if (sizeRatio < 0.8) reasons.push({ tone: portionS >= 0.5 ? 'mid' : 'low', short: portionS >= 0.5 ? 'on the light side' : 'very light', text: `${portionS >= 0.5 ? 'Light' : 'Very light'} ${kind}: ${pct(dayShare)} of your daily calories`, hint: portionS >= 0.5 ? `${label} budget ≈ ${pct(share)}` : 'Was anything left out of the log?' })
+    else reasons.push({ tone: sizeRatio > 1.5 ? 'low' : 'mid', short: sizeRatio > 1.5 ? 'quite heavy' : 'a bit big', text: sizeRatio > 1.5 ? `Heavy: ${pct(dayShare)} of your daily calories in one meal` : `A bit big: ${pct(dayShare)} of your daily calories`, hint: sizeRatio > 1.5 ? 'Go lighter on the next one' : `${label} budget ≈ ${pct(share)}` })
     if (!basic) {
-      if (fiberFit >= 8) { plants = 2; reasons.push({ tone: 'good', text: `Good fibre: ${Math.round(fiber)} g` }) }
-      else if (fiberFit >= 4 || plantShare >= 0.25) { plants = 1; reasons.push({ tone: 'mid', short: 'low on veg', text: `Some fibre: ${Math.round(fiber)} g`, hint: 'Add a sabzi, salad or dal' }) }
-      else { plants = 0; reasons.push({ tone: 'low', short: 'no veg', text: fit < 1 ? `Low fibre for the size: ${Math.round(fiber)} g in ${Math.round(cal).toLocaleString()} kcal` : `Low fibre: ${Math.round(fiber)} g`, hint: 'Add vegetables, salad, dal or fruit' }) }
+      if (fiberS >= 0.9) reasons.push({ tone: 'good', text: `Good fibre: ${Math.round(fiber)} g` })
+      else reasons.push({ tone: fiberS >= 0.4 ? 'mid' : 'low', short: 'low on veg', text: `${fiberS >= 0.4 ? 'Some' : 'Low'} fibre: ${Math.round(fiber)} g${sizeRatio > 1.2 ? ` in ${Math.round(cal).toLocaleString()} kcal` : ''}`, hint: 'Add vegetables, salad, dal or fruit' })
     }
-    // Food quality — 2 (neutral 1 without detail)
-    const quality = basic ? 1 : Math.max(0, 2 - qualityPenalty(1))
-    // Balance — 1: carbs ≤ 65% and fat ≤ 40% of macro calories
-    let balance = 0
-    const carbShare = macroKcal ? (meal.carbs * 4) / macroKcal : 0
-    const fatShare = macroKcal ? (meal.fat * 9) / macroKcal : 0
-    if (macroKcal && carbShare <= 0.65 && fatShare <= 0.4) balance = 1
-    else if (fatShare > 0.4) reasons.push({ tone: 'mid', short: 'fat-heavy', text: `Fat-heavy: ${pct(fatShare)} of this meal's calories` })
-    else if (carbShare > 0.65) reasons.push({ tone: 'mid', short: 'carb-heavy', text: `Carb-heavy: ${pct(carbShare)} of this meal's calories` })
-    total = protein + portion + plants + quality + balance
+    if (balanceS < 0.6) reasons.push(fatShare > 0.4
+      ? { tone: 'mid', short: 'fat-heavy', text: `Fat-heavy: ${pct(fatShare)} of this meal's calories` }
+      : { tone: 'mid', short: 'carb-heavy', text: `Carb-heavy: ${pct(carbShare)} of this meal's calories` })
+    total = 3 * proteinS + 2 * portionS + 2 * fiberS + 2 * qualityS + balanceS
   } else {
-    // Protein or plants — 4: a curd, egg or whey snack and a fruit or nuts snack both count
-    const proteinPts = proteinRatio >= 0.9 ? 4 : proteinRatio >= 0.5 ? 2.5 : proteinRatio >= 0.25 ? 1 : 0
-    const plantPts = basic ? 2 : plantShare >= 0.5 ? 4 : fiberFit >= 3 ? 2 : fiberFit >= 1.5 ? 1 : 0
-    const nourish = Math.max(proteinPts, plantPts)
-    if (proteinPts >= 4) reasons.push({ tone: 'good', text: `Protein-rich snack: ${Math.round(meal.protein)} g` })
-    else if (plantPts >= 4) reasons.push({ tone: 'good', text: 'Fruit, veg or nuts — a nourishing snack' })
-    else if (nourish < 2.5) reasons.push({ tone: 'low', short: 'not very filling', text: 'Little protein or fibre', hint: 'Try curd, fruit, sprouts, nuts or eggs' })
-    // Size — 3: snacks are only marked down when they turn into a meal
-    let size: number
-    if (sizeRatio <= 1.5) size = 3
-    else if (sizeRatio <= 2.5) { size = 1.5; reasons.push({ tone: 'mid', short: 'a big snack', text: `A big snack: ${pct(dayShare)} of your daily calories`, hint: 'Snacks work best around 10% of the day' }) }
-    else { size = 0; reasons.push({ tone: 'low', short: 'meal-sized', text: `Meal-sized snack: ${pct(dayShare)} of your daily calories`, hint: 'Count it as a meal or go lighter' }) }
-    // Food quality — 3 (neutral 1.5 without detail)
-    const quality = basic ? 1.5 : Math.max(0, 3 - qualityPenalty(1.5))
-    total = nourish + size + quality
+    // A protein snack (curd, eggs, whey) and a plant snack (fruit, nuts, sprouts) both count.
+    const plantS = basic ? 0.5 : Math.max(fiberS, lin(plantShare, [0.2, 0.5]))
+    const nourishS = Math.max(proteinS, plantS)
+    if (proteinS >= 0.9) proteinReason()
+    else if (plantS >= 0.9) reasons.push({ tone: 'good', text: 'Fruit, veg or nuts — a nourishing snack' })
+    else if (nourishS < 0.5) reasons.push({ tone: 'low', short: 'not very filling', text: 'Little protein or fibre', hint: 'Try curd, fruit, sprouts, nuts or eggs' })
+    if (portionS < 0.9) reasons.push({ tone: 'mid', short: 'a big snack', text: `A big snack: ${pct(dayShare)} of your daily calories`, hint: 'Snacks work best around 10–15% of the day' })
+    total = 4 * nourishS + 3 * portionS + 3 * qualityS
   }
 
   let score = Math.min(10, Math.max(1, Math.round(total)))
   let override: string | null = null
   // Far too much in one sitting can't score well, whatever's in it.
-  if (sizeRatio > (snack ? 2.5 : 2)) score = Math.min(score, 4)
+  if (!snack && sizeRatio > 2) score = Math.min(score, 4)
   else if (!snack && sizeRatio > 1.5) score = Math.min(score, 6)
 
   // ── Hard rules ───────────────────────────────────────────────────────────
@@ -245,18 +276,19 @@ export function mealScore(meal: ScoredMeal, goals: Goals): MealScore {
     score = Math.max(1, score - 1)
     reasons.unshift({ tone: 'mid', short: 'with alcohol', text: `Includes ≈${drinksText(alcoholG)}` })
   }
-  if (!basic && sugarShare >= 0.5 && !override) { score = Math.min(score, 3); override = 'Mostly sugar' }
-  else if (!basic && junkShare >= 0.6 && !override) score = Math.min(score, snack ? 3 : 5)
+  if (!basic && !override && sugarShare >= 0.5) { score = Math.min(score, 3); override = 'Mostly sugar' }
+  else if (!basic && !override && junkShare >= 0.6) score = Math.min(score, snack ? 3 : junkShare >= 0.8 ? 4 : 5)
 
   const tone: Tone = score >= 7 ? 'good' : score >= 5 ? 'mid' : 'low'
   // One thing that went well, then the fixes (worst first); at most three lines.
   const good = reasons.filter((r) => r.tone === 'good')
-  const fixes = reasons.filter((r) => r.tone !== 'good').sort((a, b) => order(b.tone) - order(a.tone))
+  const fixes = reasons.filter((r) => r.tone !== 'good').sort((x, y) => order(y.tone) - order(x.tone))
   const shown = [...good.slice(0, fixes.length ? 1 : 3), ...fixes].slice(0, 3)
   const weakest = fixes[0]?.short
   const band = score >= 9 ? 'Excellent' : score >= 7 ? 'Good' : score >= 5 ? 'Okay' : score >= 3 ? 'Needs work' : 'Poor'
   const headline = override ?? (score >= 9 || !weakest ? band : `${band}, ${weakest}`)
-  return { score, tone, headline, reasons: shown, basic }
+  const note = mealSized ? 'Meal-sized snack — scored as a meal' : undefined
+  return { score, tone, headline, reasons: shown, basic, note }
 }
 const order = (t: Tone) => (t === 'good' ? 0 : t === 'mid' ? 1 : 2)
 

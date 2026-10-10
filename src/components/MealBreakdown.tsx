@@ -36,7 +36,7 @@ export function MealBreakdown({ log, author, onMore }: Pick<FeedItem, 'log' | 'a
           <span className="caps">Meal score</span>
           <b className="block font-display" style={{ fontSize: 19, fontWeight: 500, marginTop: 2, lineHeight: 1.2 }}>{score.headline}</b>
           <small className="muted block">
-            {Math.round(meal.calories).toLocaleString()} kcal{items.length ? ` · ${items.length} item${items.length === 1 ? '' : 's'}` : ''}
+            {score.note ?? `${Math.round(meal.calories).toLocaleString()} kcal${items.length ? ` · ${items.length} item${items.length === 1 ? '' : 's'}` : ''}`}
           </small>
         </span>
       </div>

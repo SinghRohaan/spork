@@ -80,6 +80,7 @@ export function MealScoreCard({ meal, goals }: { meal: ScoredMeal; goals: Goals 
         <div className="min-w-0">
           <span className="caps">Meal score</span>
           <h4 style={{ marginTop: 3 }}>{s.headline}</h4>
+          {s.note && <p className="tiny muted" style={{ marginTop: 2 }}>{s.note}</p>}
         </div>
         <span className="font-display" style={{ fontSize: 34, lineHeight: 1, color: 'var(--tone)' }}>{s.score ?? '—'}<small className="muted" style={{ font: '13px var(--font-sans)' }}> /10</small></span>
       </div>
