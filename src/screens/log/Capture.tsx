@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogDraftStore } from '../../store/logDraft'
 import { useTodayStats } from '../../hooks/useTodayStats'
 import { TopBar } from '../../components/TopBar'
 import DailyProgress from './DailyProgress'
 import { SporkOrb } from '../../components/brand/SporkOrb'
 import type { PastMeal } from '../../lib/logAgain'
+
+const PhotoCropper = lazy(() => import('../../components/PhotoCropper').then((m) => ({ default: m.PhotoCropper })))
 
 interface CaptureProps {
   onGetEstimate: () => void
@@ -28,9 +30,12 @@ export default function Capture({ onGetEstimate, onSkipPhoto, onRepeat, recentMe
   const previewUrl = useMemo(() => photoFile ? URL.createObjectURL(photoFile) : null, [photoFile])
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
+  // A new photo goes through the crop step first ("✕" keeps it uncropped).
+  const [cropping, setCropping] = useState<File | null>(null)
+
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (file) setPhoto(file)
+    if (file) setCropping(file)
     // Reset so the same file can be re-selected if needed
     event.target.value = ''
   }
@@ -79,6 +84,7 @@ export default function Capture({ onGetEstimate, onSkipPhoto, onRepeat, recentMe
           <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
             <button type="button" onClick={() => cameraInputRef.current?.click()} className="pill photo-pill">Retake</button>
             <button type="button" onClick={() => galleryInputRef.current?.click()} className="pill photo-pill">Change</button>
+            <button type="button" onClick={() => photoFile && setCropping(photoFile)} className="pill photo-pill">Crop</button>
           </div>
         </div>
       ) : (
@@ -129,6 +135,11 @@ export default function Capture({ onGetEstimate, onSkipPhoto, onRepeat, recentMe
       )}
 
       {/* Hidden inputs — camera forces live capture, gallery opens picker */}
+      {cropping && (
+        <Suspense fallback={null}>
+          <PhotoCropper file={cropping} onDone={(f) => { setPhoto(f); setCropping(null) }} onCancel={() => { setPhoto(cropping); setCropping(null) }} />
+        </Suspense>
+      )}
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={handleFileChange} />
       <input ref={galleryInputRef} type="file" accept="image/*" className="sr-only" onChange={handleFileChange} />
 

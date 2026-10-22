@@ -1,5 +1,8 @@
 {
-  "rewrites": [{ "source": "/((?!assets/|fonts/|sw\\.js|workbox-|manifest\\.webmanifest|registerSW\\.js|.*\\.png$|.*\\.ico$).*)", "destination": "/index.html" }],
+  "rewrites": [
+    { "source": "/p/:id", "destination": "/api/share-page?id=:id" },
+    { "source": "/((?!api/|assets/|fonts/|sw\\.js|workbox-|manifest\\.webmanifest|registerSW\\.js|.*\\.png$|.*\\.ico$).*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

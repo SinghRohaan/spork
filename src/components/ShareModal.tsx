@@ -70,12 +70,26 @@ export function ShareSheet({ cards, fileName, message, link = null, prepareLink,
     return prepareLink()
   }
 
+  /**
+   * Puts the post link on the clipboard. It must run straight away inside the
+   * tap — browsers block clipboard writes (and the share sheet) after a wait.
+   */
+  function copyLinkNow(): boolean {
+    if (!link || !navigator.clipboard) return false
+    navigator.clipboard.writeText(link).catch(() => { /* not allowed here — the link is still in the share text */ })
+    return true
+  }
+
   async function handleShare() {
     if (!file) return
-    const linked = await withLink()
+    // Image shares often lose their text (Instagram always, WhatsApp sometimes),
+    // so the link also goes on the clipboard, ready to paste as a caption.
+    const copied = copyLinkNow()
+    void withLink() // turn the public link on in the background; the share sheet can't wait for it
     try {
       // The link goes in the text: some apps drop the `url` field when an image is attached.
-      await navigator.share({ text: linked ? `${message} ${link}` : message, files: [file] })
+      await navigator.share({ text: link ? `${message} ${link}` : message, files: [file] })
+      if (copied) toast('Link copied too — paste it as your caption')
     } catch (err) {
       if ((err as Error).name !== 'AbortError') console.error(err)
     }
@@ -97,7 +111,7 @@ export function ShareSheet({ cards, fileName, message, link = null, prepareLink,
   async function handleInstagram() {
     if (canShareFile) return handleShare()
     handleSave()
-    toast('Image saved — post it from Instagram')
+    if (!link) toast('Image saved — post it from Instagram')
   }
 
   function handleSave() {
@@ -106,6 +120,10 @@ export function ShareSheet({ cards, fileName, message, link = null, prepareLink,
     a.href = ready.url
     a.download = `${fileName}.png`
     a.click()
+    if (copyLinkNow()) {
+      void withLink()
+      toast('Image saved · link copied — paste it when you post')
+    }
   }
 
   async function handleCopyLink() {

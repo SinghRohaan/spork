@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useLogDraftStore, type MealType, type Satiety } from '../../store/logDraft'
 import { useTodayStats } from '../../hooks/useTodayStats'
 import { formatItemQuantity, type ParsedEstimateItem } from '../../lib/parseEstimate'
 import type { ConfirmedItem } from '../../lib/estimateMeal'
+
+const PhotoCropper = lazy(() => import('../../components/PhotoCropper').then((m) => ({ default: m.PhotoCropper })))
 
 const MEAL_TYPE_OPTIONS: { value: MealType; label: string }[] = [
   { value: 'breakfast', label: 'Breakfast' },
@@ -71,6 +73,7 @@ export default function EstimateEdit({ onBack, onPost, posting, postError, onRee
   const [showItemBreakdown, setShowItemBreakdown] = useState(true)
 
   const previewUrl = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile])
+  const [cropping, setCropping] = useState<File | null>(null)
   useEffect(() => {
     if (!previewUrl) return
     return () => URL.revokeObjectURL(previewUrl)
@@ -94,7 +97,17 @@ export default function EstimateEdit({ onBack, onPost, posting, postError, onRee
       </div>
 
       {/* Photo preview */}
-      {previewUrl && <img src={previewUrl} alt="" className="photo natural" style={{ maxHeight: 260 }} />}
+      {previewUrl && (
+        <div className="relative">
+          <img src={previewUrl} alt="" className="photo natural" style={{ maxHeight: 260 }} />
+          {photoFile && <button type="button" onClick={() => setCropping(photoFile)} className="pill photo-pill absolute" style={{ right: 12, bottom: 12 }}>Crop</button>}
+        </div>
+      )}
+      {cropping && (
+        <Suspense fallback={null}>
+          <PhotoCropper file={cropping} onDone={(f) => { setPhoto(f); setCropping(null) }} onCancel={() => { setPhoto(cropping); setCropping(null) }} />
+        </Suspense>
+      )}
 
       {/* Barcode logs start without a photo — let the user add one of the pack */}
       {fromBarcode && (
@@ -110,7 +123,7 @@ export default function EstimateEdit({ onBack, onPost, posting, postError, onRee
             </button>
           )}
           <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="sr-only"
-            onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) setPhoto(file) }} />
+            onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) setCropping(file) }} />
         </>
       )}
 
